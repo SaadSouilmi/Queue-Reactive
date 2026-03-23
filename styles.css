@@ -1,47 +1,132 @@
-/* ── Academic clean style ── */
+/* ── Modern clean style ── */
 
-/* Subtle top border accent */
+/* Top accent */
 body {
-  border-top: 3px solid #2c3e50;
+  border-top: 3px solid #111827;
 }
 
-/* Title styling */
+/* Title */
 .quarto-title h1.title {
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: #2c3e50;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #111827;
+  font-size: 2.1rem;
 }
 
 .quarto-title .subtitle {
-  font-style: italic;
-  color: #5a6c7d;
-  font-size: 1.1rem;
+  font-style: normal;
+  color: #6b7280;
+  font-size: 1.02rem;
+  font-weight: 400;
+  line-height: 1.6;
+  max-width: 640px;
 }
 
-/* Sidebar refinements */
+/* ── Hero section (index page) ── */
+
+.hero {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 2rem 2.2rem;
+  margin: 1rem 0 2.5rem 0;
+}
+
+.hero-content {
+  font-size: 1rem;
+  line-height: 1.7;
+  color: #4b5563;
+  max-width: 720px;
+}
+
+.hero-content a {
+  font-weight: 500;
+}
+
+.hero-badges {
+  margin-top: 1.2rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.badge {
+  display: inline-block;
+  background: #111827;
+  color: #f9fafb;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.2em 0.65em;
+  border-radius: 5px;
+  letter-spacing: 0.01em;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* ── Documentation cards ── */
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  margin: 1.2rem 0 2rem 0;
+}
+
+.doc-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 1.3rem 1.4rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.doc-card:hover {
+  border-color: #9ca3af;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+.doc-card h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-top: 0;
+  margin-bottom: 0.4rem;
+  border: none;
+  padding: 0;
+}
+
+.doc-card p {
+  font-size: 0.9rem;
+  color: #6b7280;
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* ── Sidebar ── */
+
 .sidebar-title {
   font-weight: 600;
-  font-size: 0.95rem;
-  color: #2c3e50;
+  font-size: 0.92rem;
+  color: #111827;
 }
 
 .sidebar-item .sidebar-item-text {
-  font-size: 0.9rem;
+  font-size: 0.88rem;
 }
 
 .sidebar .sidebar-section .sidebar-item.active .sidebar-item-text {
   font-weight: 600;
-  color: #2c3e50;
+  color: #111827;
 }
 
-/* Headings */
+/* ── Headings ── */
+
 h1, h2, h3, h4 {
-  color: #2c3e50;
+  color: #111827;
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 h2 {
-  border-bottom: 1px solid #dee2e6;
+  border-bottom: 1px solid #e5e7eb;
   padding-bottom: 0.4rem;
   margin-top: 2.5rem;
 }
@@ -50,33 +135,35 @@ h3 {
   margin-top: 2rem;
 }
 
-/* Links */
+/* ── Links ── */
+
 a {
-  color: #34698a;
+  color: #2563eb;
   text-decoration: none;
 }
 
 a:hover {
-  color: #2c3e50;
+  color: #1d4ed8;
   text-decoration: underline;
 }
 
-/* Code blocks */
+/* ── Code blocks ── */
+
 pre.sourceCode {
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
-  border-radius: 6px;
-  padding: 1rem;
-  font-size: 0.88rem;
-  line-height: 1.5;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem 1.2rem;
+  font-size: 0.85rem;
+  line-height: 1.6;
 }
 
 code {
-  color: #c7254e;
-  background: #f8f9fa;
-  padding: 0.15em 0.35em;
-  border-radius: 3px;
-  font-size: 0.9em;
+  color: #dc2626;
+  background: #f3f4f6;
+  padding: 0.12em 0.35em;
+  border-radius: 4px;
+  font-size: 0.87em;
 }
 
 pre code {
@@ -85,73 +172,83 @@ pre code {
   padding: 0;
 }
 
-/* Tables */
+/* ── Tables ── */
+
 table {
-  font-size: 0.92rem;
+  font-size: 0.9rem;
   border-collapse: collapse;
   width: 100%;
   margin: 1.5rem 0;
 }
 
 thead {
-  border-bottom: 2px solid #2c3e50;
+  border-bottom: 2px solid #111827;
 }
 
 th {
   font-weight: 600;
-  color: #2c3e50;
-  padding: 0.6rem 0.8rem;
+  color: #111827;
+  padding: 0.55rem 0.8rem;
   text-align: left;
 }
 
 td {
   padding: 0.5rem 0.8rem;
-  border-bottom: 1px solid #e9ecef;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 tbody tr:hover {
-  background: #f8f9fa;
+  background: #f9fafb;
 }
 
-/* Callouts */
+/* ── Callouts ── */
+
 .callout {
-  border-radius: 6px;
+  border-radius: 8px;
   margin: 1.5rem 0;
 }
 
-/* Mermaid diagrams */
+/* ── Mermaid diagrams ── */
+
 .mermaid svg {
   max-width: 100%;
 }
 
-/* Block quotes — for epigraphs */
+/* ── Block quotes ── */
+
 blockquote {
-  border-left: 3px solid #2c3e50;
+  border-left: 3px solid #111827;
   padding-left: 1.2rem;
-  color: #5a6c7d;
+  color: #6b7280;
   font-style: italic;
   margin: 1.5rem 0;
 }
 
-/* Page footer */
+/* ── Page footer ── */
+
 .nav-footer {
-  font-size: 0.85rem;
-  color: #8895a4;
-  border-top: 1px solid #e9ecef;
+  font-size: 0.84rem;
+  color: #9ca3af;
+  border-top: 1px solid #e5e7eb;
 }
 
-/* TOC refinements */
+/* ── TOC ── */
+
 .sidebar nav[role="doc-toc"] a {
-  font-size: 0.88rem;
-  color: #5a6c7d;
+  font-size: 0.86rem;
+  color: #6b7280;
 }
 
 .sidebar nav[role="doc-toc"] a.active {
-  color: #2c3e50;
+  color: #111827;
   font-weight: 600;
 }
 
-/* Math display */
+/* ── Math display ── */
+
 .math.display {
   margin: 1.5rem 0;
+  padding: 0.8rem 1rem;
+  background: #f9fafb;
+  border-radius: 6px;
 }

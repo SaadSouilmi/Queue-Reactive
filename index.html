@@ -75,7 +75,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="site_libs/quarto-html/quarto-syntax-highlighting-8b4baf804e461d9b72633f0de59a0cac.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-0736d62889a6a221a67ba4d03882f876.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-5ee32fd12e4893cbbd3c89dbebe6ed2c.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "sidebar",
   "copy-button": false,
@@ -127,7 +127,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   </nav>
 </header>
 <!-- content -->
-<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article">
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-full">
 <!-- sidebar -->
   <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
     <div class="pt-lg-2 mt-2 text-left sidebar-header">
@@ -187,24 +187,24 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#requirements" id="toc-requirements" class="nav-link active" data-scroll-target="#requirements">Requirements</a></li>
-  <li><a href="#build" id="toc-build" class="nav-link" data-scroll-target="#build">Build</a></li>
-  <li><a href="#project-structure" id="toc-project-structure" class="nav-link" data-scroll-target="#project-structure">Project Structure</a></li>
-  <li><a href="#further-details" id="toc-further-details" class="nav-link" data-scroll-target="#further-details">Further Details</a></li>
+  <li><a href="#documentation" id="toc-documentation" class="nav-link active" data-scroll-target="#documentation">Documentation</a></li>
+  <li><a href="#quick-start" id="toc-quick-start" class="nav-link" data-scroll-target="#quick-start">Quick Start</a></li>
+  <li><a href="#project-layout" id="toc-project-layout" class="nav-link" data-scroll-target="#project-layout">Project Layout</a></li>
   </ul>
 </nav>
     </div>
 <!-- main -->
-<main class="content" id="quarto-document-content">
+<main class="content column-body" id="quarto-document-content">
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
 <h1 class="title">Queue-Reactive LOB Simulator</h1>
+<p class="subtitle lead">A limit order book simulation framework based on the Queue-Reactive model for large-tick assets</p>
 </div>
 
 
 
-<div class="quarto-title-meta">
+<div class="quarto-title-meta column-body">
 
     
   
@@ -216,18 +216,33 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </header>
 
 
-<p>Limit order book simulation framework based on the Queue Reactive (QR) model for large-tick assets.</p>
-<section id="requirements" class="level2">
-<h2 class="anchored" data-anchor-id="requirements">Requirements</h2>
-<ul>
-<li><strong>C++20</strong> (gcc 13.3.0)</li>
-<li><strong>CMake</strong> 3.15+</li>
-<li><strong>vcpkg</strong> (bundled as submodule)</li>
-<li><strong>Python 3.11+</strong> with <code>uv</code> for the estimation/analysis pipeline</li>
-</ul>
+<div class="hero">
+<div class="hero-content">
+<p>The QR simulator reproduces realistic order book dynamics by sampling events — limit orders, cancellations, trades — from empirical distributions conditioned on the current book state. A C++ engine handles the simulation loop; a Python pipeline estimates parameters from <a href="https://databento.com">Databento</a> market data.</p>
+<div class="hero-badges">
+<p><span class="badge">C++20</span> <span class="badge">CMake</span> <span class="badge">Python 3.11+</span> <span class="badge">Apache Arrow</span></p>
+</div>
+</div>
+</div>
+<section id="documentation" class="level2">
+<h2 class="anchored" data-anchor-id="documentation">Documentation</h2>
+<div class="card-grid">
+<section id="model-and-data" class="level3 doc-card">
+<h3 class="anchored" data-anchor-id="model-and-data"><a href="./model.html">Model and Data</a></h3>
+<p>The QR framework, data sources, estimation pipeline, and the probability biasing mechanism for market impact.</p>
 </section>
-<section id="build" class="level2">
-<h2 class="anchored" data-anchor-id="build">Build</h2>
+<section id="order-book" class="level3 doc-card">
+<h3 class="anchored" data-anchor-id="order-book"><a href="./orderbook.html">Order Book</a></h3>
+<p>Book representation, event types, order processing transitions, and the C++ <code>std::map</code>-based implementation.</p>
+</section>
+<section id="simulation-loop" class="level3 doc-card">
+<h3 class="anchored" data-anchor-id="simulation-loop"><a href="./simulation.html">Simulation Loop</a></h3>
+<p>How to configure, assemble, and run a QR simulation — from a barebones loop to bias injection and output recording.</p>
+</section>
+</div>
+</section>
+<section id="quick-start" class="level2">
+<h2 class="anchored" data-anchor-id="quick-start">Quick Start</h2>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Clone with submodules</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone <span class="at">--recursive</span> https://github.com/youruser/Alpha-Queue-Reactive.git</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -239,8 +254,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">-DCMAKE_TOOLCHAIN_FILE</span><span class="op">=</span>./vcpkg/scripts/buildsystems/vcpkg.cmake</span>
 <span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="fu">cmake</span> <span class="at">--build</span> build <span class="at">-j</span><span class="va">$(</span><span class="fu">nproc</span><span class="va">)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
-<section id="project-structure" class="level2">
-<h2 class="anchored" data-anchor-id="project-structure">Project Structure</h2>
+<section id="project-layout" class="level2">
+<h2 class="anchored" data-anchor-id="project-layout">Project Layout</h2>
 <pre><code>qr/
 ├── cpp/
 │   ├── include/        # Headers (orderbook, qr_model, simulation)
@@ -252,31 +267,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 ├── configs/            # JSON simulation configs
 ├── tests/              # C++ unit tests (GoogleTest)
 └── data/               # Input data &amp; results</code></pre>
-</section>
-<section id="further-details" class="level2">
-<h2 class="anchored" data-anchor-id="further-details">Further Details</h2>
-<table class="caption-top table">
-<thead>
-<tr class="header">
-<th>Page</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><a href="./model.html">Model and Data</a></td>
-<td>The QR framework, data sources, estimation pipeline, and market impact mechanism</td>
-</tr>
-<tr class="even">
-<td><a href="./orderbook.html">Order Book</a></td>
-<td>Book representation, event types, order processing transitions, and the C++ implementation</td>
-</tr>
-<tr class="odd">
-<td><a href="./simulation.html">Simulation Loop</a></td>
-<td>How to configure, assemble, and run a QR simulation</td>
-</tr>
-</tbody>
-</table>
 
 
 </section>
@@ -355,7 +345,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     }
       var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
       var mailtoRegex = new RegExp(/^mailto:/);
-        var filterRegex = new RegExp('/' + window.location.host + '/');
+        var filterRegex = new RegExp("https:\/\/SaadSouilmi\.github\.io\/Queue-Reactive\/");
       var isInternal = (href) => {
           return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
       }
