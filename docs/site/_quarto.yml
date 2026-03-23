@@ -1,0 +1,37 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: "Queue-Reactive LOB Simulator"
+  sidebar:
+    style: floating
+    search: true
+    contents:
+      - href: index.qmd
+        text: Overview
+      - section: "Implementation"
+        contents:
+          - href: orderbook.qmd
+            text: Order Book
+          - href: model.qmd
+            text: Model and Data
+          - href: simulation.qmd
+            text: Simulation Loop
+  page-footer:
+    left: "Queue-Reactive LOB Simulator"
+    right: "Built with [Quarto](https://quarto.org/)"
+
+format:
+  html:
+    theme: litera
+    mainfont: "'Inter', 'Source Sans Pro', -apple-system, BlinkMacSystemFont, sans-serif"
+    monofont: "'JetBrains Mono', 'Fira Code', 'Source Code Pro', monospace"
+    fontsize: "1rem"
+    linestretch: 1.65
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    code-copy: true
+    highlight-style: github
+    css: styles.css

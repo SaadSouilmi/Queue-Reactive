@@ -1,0 +1,173 @@
+---
+title: "Likelihood-Based Calibration of Market Impact"
+format:
+  pdf:
+    documentclass: article
+    number-sections: true
+    colorlinks: true
+---
+
+# Setup
+
+The QR model assigns event probabilities $\{p_j\}$ conditioned on state $(i, s)$ — imbalance bin and spread.
+We extend it with a transient impact feedback: past trades bias future trade probabilities through a kernel $G$.
+
+# The Impact Process
+
+Define the signed impact process at time $t$:
+
+$$
+\phi_t = \sum_{t_k < t} s_k \sqrt{v_k} \, G(t - t_k)
+$$
+
+where $s_k \in \{+1, -1\}$ is the trade sign (ask/bid), $v_k$ is the trade size, and $G$ is a decay kernel.
+
+## Kernel Choices
+
+**Exponential:**
+$$
+G(t) = e^{-t/\tau}
+$$
+Single parameter $\tau$. Admits recursive update: $\phi_{t_{n+1}} = \phi_{t_n} \, e^{-(t_{n+1} - t_n)/\tau} + s_n \sqrt{v_n}$.
+
+**Power-law:**
+$$
+G(t) = (1 + t/\tau)^{\beta}, \quad \beta < 0
+$$
+Two parameters $(\tau, \beta)$. Unlike the exponential kernel, the power-law does not admit a simple recursive update. A direct computation of $\phi_t = \sum_{t_k < t} s_k \sqrt{v_k} \, G(t - t_k)$ requires summing over all past trades at each event — $O(N)$ per event, $O(N^2)$ total. For datasets with millions of events this is prohibitive.
+
+## Sum-of-Exponentials Approximation
+
+The key idea is to approximate the power-law kernel as a weighted sum of exponentials:
+
+$$
+G(t) = (1 + t/\tau)^{\beta} \approx \sum_{k=1}^{K} w_k \, e^{-\lambda_k t}
+$$
+
+where $\{\lambda_k\}$ are fixed decay rates (equivalently, half-lives $h_k = \ln 2 / \lambda_k$) chosen on a log-spaced grid, and $\{w_k\}$ are non-negative weights to be determined. Once in this form, each component admits the recursive update independently:
+
+$$
+\phi_k(t_{n+1}) = \phi_k(t_n) \, e^{-\lambda_k (t_{n+1} - t_n)} + w_k \, s_n \sqrt{v_n}
+$$
+
+and the total impact is $\phi_t = \sum_k \phi_k(t)$, computed in $O(K)$ per event.
+
+## Computing the Weights
+
+Fix a grid of $K$ half-lives log-spaced from $h_{\min}$ to $h_{\max}$ (e.g. 1 ms to 100 s), giving decay rates $\lambda_k = \ln 2 / h_k$. Evaluate both the target kernel and the exponential basis at $N_{\text{fit}}$ log-spaced time points $\{t_i\}$:
+
+$$
+b_i = (1 + t_i / \tau)^{\beta}, \qquad A_{ik} = e^{-\lambda_k t_i}
+$$
+
+The weights $\mathbf{w}$ are found by solving the least-squares problem:
+
+$$
+\min_{\mathbf{w}} \| A \mathbf{w} - \mathbf{b} \|^2
+$$
+
+subject to $w_k \geq 0$ (non-negative least squares, NNLS). The non-negativity constraint ensures the approximation remains a valid mixture of decaying exponentials.
+
+In practice, for well-behaved decaying kernels ($\beta < 0$), the unconstrained normal equations
+
+$$
+(A^\top A) \, \mathbf{w} = A^\top \mathbf{b}
+$$
+
+typically yield all-positive weights. The system $A^\top A$ is $K \times K$ symmetric positive-definite and can be solved efficiently via Cholesky decomposition, with any negative weights clamped to zero post hoc.
+
+## Approximation Quality
+
+The quality depends on $K$ (number of components) and the range $[h_{\min}, h_{\max}]$. In practice, $K = 20$ components spanning 5 orders of magnitude provide excellent approximation for power-law exponents $\beta \in [-3, -0.1]$. The relative error is typically below 1\% across the full time range.
+
+# Bias Mechanism
+
+At each event, the bias $b = m \cdot \phi_t$ modifies trade probabilities one-sidedly:
+
+- If $b > 0$: bid trade probabilities $\times\, e^{b}$, all else unchanged
+- If $b < 0$: ask trade probabilities $\times\, e^{-b}$, all else unchanged
+
+The intuition: if recent trades were predominantly asks (buying), $\phi_t > 0$, so bid trades (selling) become more likely — a mean-reversion feedback.
+
+Modified event probabilities:
+$$
+\tilde{p}_j = \frac{p_j \cdot f_j(b)}{Z(b)}
+$$
+where $f_j(b)$ is the multiplicative factor ($e^{|b|}$ for the biased side, $1$ otherwise) and $Z(b) = \sum_j p_j \cdot f_j(b)$ renormalises.
+
+# Log-Likelihood
+
+Given $N$ observed events $\{e_n\}_{n=1}^N$ with known states $(i_n, s_n)$:
+
+$$
+\mathcal{L}(\tau, m) = \sum_{n=1}^{N} \log \tilde{p}_{e_n} = \sum_{n=1}^{N} \left[ \log p_{e_n} + \log f_{e_n}(b_n) - \log Z_n(b_n) \right]
+$$
+
+Since $\log p_{e_n}$ does not depend on $(\tau, m)$, we maximise the reduced likelihood:
+
+$$
+\mathcal{L}^*(\tau, m) = \sum_{n=1}^{N} \left[ \log f_{e_n}(b_n) - \log Z_n(b_n) \right]
+$$
+
+## Explicit Form
+
+Partition the base probabilities in state $(i_n, s_n)$ into:
+
+- $P_{\text{bid}}$: total probability of bid trade events
+- $P_{\text{ask}}$: total probability of ask trade events
+- $P_{\text{rest}}$: total probability of non-trade events (adds, cancels, creates)
+
+Then for $b_n = m \cdot \phi_{t_n}$:
+
+**Case $b_n > 0$:**
+$$
+Z_n = P_{\text{bid}} \, e^{b_n} + P_{\text{ask}} + P_{\text{rest}}
+$$
+
+| Observed event | Contribution to $\mathcal{L}^*$ |
+|:---|:---|
+| Bid trade | $b_n - \log Z_n$ |
+| Anything else | $- \log Z_n$ |
+
+**Case $b_n < 0$:**
+$$
+Z_n = P_{\text{bid}} + P_{\text{ask}} \, e^{-b_n} + P_{\text{rest}}
+$$
+
+| Observed event | Contribution to $\mathcal{L}^*$ |
+|:---|:---|
+| Ask trade | $(-b_n) - \log Z_n$ |
+| Anything else | $- \log Z_n$ |
+
+**Case $b_n = 0$:** $Z_n = 1$, zero contribution.
+
+# Normalisation is Essential
+
+Without the $\log Z_n$ penalty, the likelihood is monotone in $|m|$ — larger bias always increases the numerator for correctly-predicted trades. The normalisation term $Z_n > 1$ whenever $b_n \neq 0$, penalising excessive bias and yielding a finite optimum.
+
+# Optimisation Strategy
+
+The parameters $(\tau, m)$ — or $(\tau, \beta, m)$ for the power-law kernel — live in a low-dimensional space.
+
+1. **Fix $\tau$**, compute $\phi_{t_n}$ for all events via the recursive update in $O(N)$
+2. **Optimise over $m$**: this is a 1D problem for each $\tau$. The likelihood is smooth and unimodal in $m$ for fixed $\phi$
+3. **Grid search over $\tau$** (or $(\tau, \beta)$): evaluate the profile likelihood $\max_m \mathcal{L}^*(\tau, m)$ on a coarse grid, then refine
+
+For the power-law kernel, approximate $G$ with sum of exponentials on a log-spaced grid of time scales, fit weights via NNLS, then proceed identically.
+
+# Practical Considerations
+
+## Computational Cost
+
+With the recursive exponential update, computing $\phi_{t_n}$ is $O(N)$. Evaluating the likelihood given $\phi$ is also $O(N)$. A grid of 50 values of $\tau$ with 1D optimisation over $m$ is fast even on the full dataset.
+
+## Base Probability Estimation
+
+The base probabilities $\{p_j\}$ are estimated from the same empirical data, which already contains the impact feedback. This means $\hat{m}$ is slightly attenuated toward zero. The effect is small for transient kernels since impact averages out over long horizons. Alternatives:
+
+- **Train/test split** across days to separate estimation of $\{p_j\}$ and $(\tau, m)$
+- **EM iteration**: fit $(\tau, m)$, re-estimate $\{p_j\}$ correcting for impact, repeat
+
+## Subsampling
+
+For initial exploration, fit on a random subset of trading days (e.g. 10--20 days) before running on the full dataset.

@@ -1,0 +1,152 @@
+---
+title: "Simulation Loop"
+subtitle: "Writing a QR simulation from scratch"
+---
+
+## Barebones Example
+
+The simplest possible simulation — load parameters, init book, loop:
+
+```cpp
+#include "orderbook.h"
+#include "qr_model.h"
+
+using namespace qr;
+
+int main() {
+    std::string params_path = "data/PFE/qr_params";
+
+    // Load estimated parameters
+    QueueDistributions dists(params_path + "/invariant_distributions_qmax100.csv");
+    QRParams params(params_path);
+    SizeDistributions size_dists(params_path + "/size_distrib.csv");
+
+    // Initialise order book (4 levels per side)
+    OrderBook lob(dists, 4);
+    lob.init({1516, 1517, 1518, 1519},  // bid prices
+             {4, 1, 10, 5},              // bid volumes
+             {1520, 1521, 1522, 1523},    // ask prices
+             {6, 17, 22, 23});            // ask volumes
+
+    // Create model (wraps book + params + size distributions)
+    QRModel model(&lob, params, size_dists);
+
+    // Simulate 1 hour (in nanoseconds)
+    int64_t duration = int64_t(3600) * 1'000'000'000;
+    int64_t time = 0;
+
+    while (time < duration) {
+        Order order = model.sample_order(time);
+        // Always sample dt after the order — dt distribution may depend on the event
+        int64_t dt  = model.sample_dt(model.last_event());
+        time += dt;
+        order.ts = time;
+
+        lob.process(order);                            // apply to book
+    }
+}
+```
+
+That's the entire simulation. `model.sample_order()` reads the current book state (imbalance, spread), samples an event and a size, and returns a concrete `Order`. `model.sample_dt()` draws an inter-arrival time. The book handles the rest.
+
+## What `sample_order` Does
+
+Internally, `sample_order` performs these steps:
+
+1. Read $(\text{Imb}, n)$ from the book
+2. Look up the `StateParams` for that state — a list of events with probabilities
+3. Draw from the categorical distribution → gives an `Event` (type, side, queue)
+4. Draw a size from the empirical size distribution for that event, scaled by MES
+5. Compute the price from the event and current book prices:
+
+| Event | Price |
+|-------|-------|
+| Add at $q_{-1}$ | `best_bid` |
+| Add at $q_{-2}$ | `best_bid - 1` |
+| Add at $q_1$ | `best_ask` |
+| Add at $q_2$ | `best_ask + 1` |
+| Cancel | same as Add |
+| Trade at $q_{-1}$ | `best_bid` (sell into bid) |
+| Trade at $q_1$ | `best_ask` (buy into ask) |
+| CreateBid | `best_bid + 1` |
+| CreateAsk | `best_ask - 1` |
+
+## Inter-Arrival Time
+
+By default, $\Delta t$ is sampled from an exponential distribution: $\Delta t \sim \text{Exp}(\Lambda(\text{Imb}, n))$.
+
+You can replace it with any distribution by implementing the `DeltaT` interface and passing it to the model:
+
+```cpp
+class DeltaT {
+public:
+    virtual ~DeltaT() = default;
+    virtual int64_t sample(int imb_bin, int spread, const Event& event,
+                           std::mt19937_64& rng) const = 0;
+};
+```
+
+The interface receives the current state and the sampled event, so your distribution can condition on anything. For example, the codebase includes a 5-component Gaussian mixture in $\log_{10}$ space:
+
+```cpp
+MixtureDeltaT delta_t(params_path + "/delta_t_gmm.csv");
+QRModel model(&lob, params, size_dists, delta_t);
+```
+
+## Adding Bias
+
+To inject a signal, call `model.bias(b)` before `sample_order`. This scales trade probabilities while leaving non-trade events unchanged:
+
+```cpp
+while (time < duration) {
+    double b = impact->bias_factor();
+    model.bias(b);                                     // bias trades
+
+    Order order = model.sample_order(time);
+    int64_t dt  = model.sample_dt(model.last_event());
+    time += dt;
+    order.ts = time;
+
+    impact->step(time);                                // decay
+
+    lob.process(order);
+
+    // Update impact accumulator after trades
+    if (order.type == OrderType::Trade && !order.rejected) {
+        impact->add_trade(order.side, order.size);
+    }
+}
+```
+
+Any source of bias works — market impact, alpha signal, or your own:
+
+```cpp
+double bias = impact->bias_factor() - alpha->scale() * alpha->value();
+model.bias(bias);
+```
+
+## Recording Output
+
+To capture the simulation output, record the book state before each event and the order metadata after:
+
+```cpp
+std::vector<Fill> fills;
+
+while (time < duration) {
+    Order order = model.sample_order(time);
+    int64_t dt  = model.sample_dt(model.last_event());
+    time += dt;
+    order.ts = time;
+
+    // Snapshot book state before processing
+    double mid = (lob.best_bid() + lob.best_ask()) / 2.0;
+    double imb = lob.imbalance();
+
+    fills.clear();
+    lob.process(order, &fills);
+
+    // Now you have: mid, imb (before), order (after), fills
+}
+```
+
+The `fills` vector gives you per-level execution details for trades. See [Order Book — Fill Recording](orderbook.qmd#fill-recording) for the format.

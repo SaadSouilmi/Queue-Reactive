@@ -1,0 +1,472 @@
+---
+title: "Order Book"
+subtitle: "Representation, transitions, and C++ implementation"
+format:
+  html:
+    code-fold: true
+---
+
+## Book Representation
+
+The order book is a collection of price levels, each holding a volume of resting orders. Prices are represented internally as **integer multiples of the tick size** (e.g. \$30.19 → 3019), so all price arithmetic is exact integer operations. We index queues relative to the current best prices — not a fixed reference price:
+
+- $q_{-1}$: best bid (highest buy price)
+- $q_{1}$: best ask (lowest sell price)
+- $q_{-i}$ for $i \geq 2$: $i-1$ ticks below the best bid
+- $q_{+i}$ for $i \geq 2$: $i-1$ ticks above the best ask
+
+```{python}
+import plotly.graph_objects as go
+
+def plot_lob(bid_prices, bid_vols, ask_prices, ask_vols, title="", annotations=None, height=350):
+    fig = go.Figure()
+
+    # Bids (blue, bars going up)
+    fig.add_trace(go.Bar(
+        x=[f"${p/100:.2f}" for p in bid_prices],
+        y=bid_vols,
+        marker_color="rgba(55, 128, 191, 0.8)",
+        marker_line=dict(color="rgba(55, 128, 191, 1)", width=1.5),
+        text=[f"q<sub>{-len(bid_prices)+i}</sub> = {v}" for i, v in enumerate(bid_vols)],
+        textposition="outside",
+        textfont=dict(size=11),
+        name="Bid",
+        hovertemplate="Price: %{x}<br>Volume: %{y}<extra>Bid</extra>",
+    ))
+
+    # Asks (red, bars going down — plotted as negative)
+    fig.add_trace(go.Bar(
+        x=[f"${p/100:.2f}" for p in ask_prices],
+        y=[-v for v in ask_vols],
+        marker_color="rgba(219, 64, 82, 0.8)",
+        marker_line=dict(color="rgba(219, 64, 82, 1)", width=1.5),
+        text=[f"q<sub>{i+1}</sub> = {v}" for i, v in enumerate(ask_vols)],
+        textposition="outside",
+        textfont=dict(size=11),
+        name="Ask",
+        hovertemplate="Price: %{x}<br>Volume: %{customdata}<extra>Ask</extra>",
+        customdata=ask_vols,
+    ))
+
+    max_vol = max(max(bid_vols), max(ask_vols))
+
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=14)),
+        xaxis=dict(title="Price", categoryorder="array",
+                   categoryarray=[f"${p/100:.2f}" for p in sorted(bid_prices + ask_prices)]),
+        yaxis=dict(title="Volume", range=[-max_vol*1.4, max_vol*1.4], zeroline=True,
+                   zerolinewidth=2, zerolinecolor="#2c3e50"),
+        template="plotly_white",
+        height=height,
+        margin=dict(t=50, b=50, l=60, r=30),
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        font=dict(family="Inter, -apple-system, sans-serif"),
+        bargap=0.15,
+    )
+
+    if annotations:
+        fig.update_layout(annotations=annotations)
+
+    return fig
+
+# Initial book state
+fig = plot_lob(
+    bid_prices=[2997, 2998, 2999, 3000],
+    bid_vols=[6, 0, 9, 5],
+    ask_prices=[3001, 3002, 3003, 3004],
+    ask_vols=[7, 0, 4, 3],
+    title="Limit Order Book — queues indexed from best",
+    annotations=[
+        dict(x=3.5, y=0, text="<b>spread n=1</b>", showarrow=True,
+             ax=0, ay=-40, font=dict(size=11, color="#2c3e50")),
+    ],
+)
+fig.show()
+```
+
+Two key quantities define the **state projection** $\Phi(\text{LOB})$:
+
+$$
+\text{Imbalance} = \frac{q_{-1} - q_1}{q_{-1} + q_1} \in [-1, 1]
+$$
+
+$$
+\text{Spread} = n \text{ (in ticks)}
+$$
+
+The imbalance is discretised into **21 bins** of width 0.1. The zero bin captures exact balance only — negative and positive imbalances are never mixed.
+
+```{python}
+import plotly.graph_objects as go
+import numpy as np
+
+bins = np.round(np.arange(-1.0, 1.1, 0.1), 1)
+colors = ["rgba(55, 128, 191, 0.6)" if b < 0 else
+          "rgba(219, 64, 82, 0.6)" if b > 0 else
+          "rgba(255, 193, 7, 0.8)" for b in bins]
+
+fig = go.Figure(go.Bar(
+    x=bins, y=[1]*len(bins),
+    marker_color=colors,
+    marker_line=dict(color="#2c3e50", width=0.5),
+    hovertemplate="Bin: %{x}<extra></extra>",
+    width=0.08,
+))
+
+# Example points
+for val, target, color, name in [
+    (-0.47, -0.5, "#3780bf", "−0.47 → bin −0.5"),
+    (0.13, 0.2, "#db4052", "0.13 → bin 0.2"),
+    (-0.03, -0.1, "#ff9800", "−0.03 → bin −0.1"),
+]:
+    fig.add_annotation(x=val, y=1.15, text=f"<b>{val}</b>", showarrow=True,
+                       ax=target - val, ay=-30, arrowhead=2, arrowcolor=color,
+                       font=dict(size=10, color=color))
+
+fig.update_layout(
+    title=dict(text="Imbalance binning scheme (21 bins)", font=dict(size=14)),
+    xaxis=dict(title="Imbalance", dtick=0.2),
+    yaxis=dict(visible=False, range=[0, 1.6]),
+    template="plotly_white",
+    height=200,
+    margin=dict(t=60, b=40, l=40, r=30),
+    font=dict(family="Inter, -apple-system, sans-serif"),
+)
+fig.show()
+```
+
+The C++ binning logic in `QRModel::get_imbalance_bin()`:
+
+```cpp
+// 21 bins: idx 0 = −1.0, idx 10 = 0.0, idx 20 = 1.0
+uint8_t get_imbalance_bin(double imbalance) {
+    imbalance = std::clamp(imbalance, -1.0, 1.0);
+
+    if (imbalance == 0.0)
+        return 10;                                    // point bin
+
+    if (imbalance < 0.0) {
+        // [-1, -0.9) → 0,  [-0.9, -0.8) → 1,  …,  [-0.1, 0) → 9
+        int bin = static_cast<int>(std::floor(imbalance * 10.0)) + 10;
+        return static_cast<uint8_t>(std::clamp(bin, 0, 9));
+    } else {
+        // (0, 0.1] → 11,  (0.1, 0.2] → 12,  …,  (0.9, 1] → 20
+        int bin = static_cast<int>(std::ceil(imbalance * 10.0)) + 10;
+        return static_cast<uint8_t>(std::clamp(bin, 11, 20));
+    }
+}
+```
+
+Negative bins are **left-closed** (`floor`), positive bins are **right-closed** (`ceil`), ensuring values just above or below zero never land in the zero bin.
+
+## Volume Normalisation
+
+In the empirical data, all queue sizes and event volumes are normalised by the **median event size** (MES) at each queue level and rounded up to integers. The MES is computed separately for each level ($\text{MES}_1, \text{MES}_2, \text{MES}_3, \text{MES}_4$) and symmetrised between bid and ask.
+In the simulation, event sizes are sampled in normalised units and then scaled back by the MES of the target queue level. This means that when a price moves and queues shift — e.g. $q_{-2}$ becomes the new $q_{-1}$ after the best bid is depleted — subsequent events at that queue are now sampled and scaled using $\text{MES}_1$ instead of $\text{MES}_2$. The queue volume itself doesn't get rescaled; it's the *event sizes* hitting that queue that change because they are now drawn from the level-1 distribution and multiplied by $\text{MES}_1$.
+
+## Event Types
+
+An event is a tuple $e = (\mathcal{T}, s, i)$:
+
+| Event | Symbol | Description | When |
+|-------|--------|-------------|------|
+| **Add** | `Add` | Limit order placed at existing level | Spread = 1 |
+| **Cancel** | `Cancel` | Resting order removed | Spread = 1 |
+| **Trade** | `Trade` | Marketable limit order executes | Spread = 1 |
+| **CreateBid** | `CreateBid` | New bid level one tick above best bid | Spread $\geq$ 2 |
+| **CreateAsk** | `CreateAsk` | New ask level one tick below best ask | Spread $\geq$ 2 |
+
+When spread = 1, events target queues $q_{\pm 1}$ and $q_{\pm 2}$ (adds/cancels) or $q_{\pm 1}$ only (trades). When spread $\geq$ 2, only Create events fire — the spread closes before normal activity resumes.
+
+## Order Processing — Transitions
+
+### Add
+
+Increments volume at an existing price level. If the price doesn't exist in the book, the order is **rejected**.
+
+```{python}
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+fig = make_subplots(rows=1, cols=2, subplot_titles=("Before", "After Add(Bid, q₋₁, size=3)"),
+                    horizontal_spacing=0.12)
+
+for col, vols in [(1, [6, 0, 9, 5]), (2, [6, 0, 9, 8])]:
+    colors = ["rgba(55,128,191,0.8)"]*4
+    if col == 2:
+        colors[3] = "rgba(55,128,191,1)"  # highlight changed
+    fig.add_trace(go.Bar(
+        x=["q₋₄", "q₋₃", "q₋₂", "q₋₁"],
+        y=vols, marker_color=colors,
+        text=vols, textposition="outside",
+        showlegend=False,
+    ), row=1, col=col)
+
+fig.update_layout(template="plotly_white", height=280,
+                  margin=dict(t=50, b=30, l=50, r=30),
+                  font=dict(family="Inter, -apple-system, sans-serif", size=12))
+fig.update_yaxes(range=[0, 12])
+fig.show()
+```
+
+### Cancel
+
+Decrements volume at a price level.
+
+- If `size < volume`: normal cancel, volume reduced
+- If `size ≥ volume`: **partial** flag set, volume zeroed, level cleaned
+- If price doesn't exist: **rejected**
+
+```{python}
+fig = make_subplots(rows=1, cols=2,
+    subplot_titles=("Before", "After Cancel(Ask, q₁, size=7) — level emptied"),
+    horizontal_spacing=0.12)
+
+for col, vols in [(1, [7, 0, 4, 3]), (2, [0, 4, 3, 0])]:
+    labels = ["q₁", "q₂", "q₃", "q₄"] if col == 1 else ["q₁ (was q₂)", "q₂ (was q₃)", "q₃ (was q₄)", "q₄ (new)"]
+    colors = ["rgba(219,64,82,0.8)"]*4
+    if col == 2:
+        colors[0] = "rgba(219,64,82,1)"
+    fig.add_trace(go.Bar(
+        x=labels, y=vols, marker_color=colors,
+        text=vols, textposition="outside", showlegend=False,
+    ), row=1, col=col)
+
+fig.update_layout(template="plotly_white", height=280,
+                  margin=dict(t=50, b=50, l=50, r=30),
+                  font=dict(family="Inter, -apple-system, sans-serif", size=11))
+fig.update_yaxes(range=[0, 10])
+fig.show()
+```
+
+### Trade (Sweep)
+
+Trades are processed as **marketable limit orders**. The order sweeps through levels from best to worst until either:
+
+1. The order is fully filled, or
+2. The limit price is reached
+
+**Residual posting**: if the order isn't fully filled after sweeping, the remaining quantity is posted to the **opposite side** at the limit price.
+
+```{python}
+fig = make_subplots(rows=1, cols=2,
+    subplot_titles=(
+        "Before: Sell 3000 @ limit $30.19",
+        "After: 2000 filled, 1000 posted as Ask"
+    ), horizontal_spacing=0.15)
+
+# Before — full book
+prices_b = ["$30.16", "$30.17", "$30.18", "$30.19", "", "$30.20", "$30.21"]
+vols_b = [1600, 200, 3000, 2000, 0, -1200, -5100]
+colors_b = ["rgba(55,128,191,0.8)"]*4 + ["white"] + ["rgba(219,64,82,0.8)"]*2
+
+fig.add_trace(go.Bar(
+    x=prices_b, y=vols_b, marker_color=colors_b,
+    text=[abs(v) if v != 0 else "" for v in vols_b],
+    textposition="outside", showlegend=False,
+), row=1, col=1)
+
+# After — swept
+prices_a = ["$30.16", "$30.17", "$30.18", "", "$30.19", "$30.20", "$30.21"]
+vols_a = [1600, 200, 3000, 0, -1000, -1200, -5100]
+colors_a = ["rgba(55,128,191,0.8)"]*3 + ["white"] + ["rgba(255,152,0,0.9)"] + ["rgba(219,64,82,0.8)"]*2
+
+fig.add_trace(go.Bar(
+    x=prices_a, y=vols_a, marker_color=colors_a,
+    text=[abs(v) if v != 0 else "" for v in vols_a],
+    textposition="outside", showlegend=False,
+), row=1, col=2)
+
+fig.update_layout(template="plotly_white", height=320,
+                  margin=dict(t=50, b=40, l=50, r=30),
+                  font=dict(family="Inter, -apple-system, sans-serif", size=11))
+fig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor="#2c3e50")
+fig.show()
+```
+
+::: {.callout-note title="The orange bar is the residual"}
+The 1000 shares that couldn't be filled are posted as a new ask at the limit price $30.19, becoming the new best ask. The best bid drops to $30.18.
+:::
+
+### Create
+
+Inserts a new price level. CreateBid goes one tick above best bid, CreateAsk goes one tick below best ask.
+
+**Guard**: if the create price would cross the spread (bid $\geq$ best ask, or ask $\leq$ best bid), the order is **rejected**.
+
+```{python}
+fig = make_subplots(rows=1, cols=2,
+    subplot_titles=("Before: spread = 2", "After: CreateBid @ $30.19"),
+    horizontal_spacing=0.12)
+
+# Before — wide spread
+prices = ["$30.17", "$30.18", "", "$30.20", "$30.21"]
+vols_before = [200, 3000, 0, -1200, -5100]
+colors_before = ["rgba(55,128,191,0.8)"]*2 + ["white"] + ["rgba(219,64,82,0.8)"]*2
+
+fig.add_trace(go.Bar(
+    x=prices, y=vols_before, marker_color=colors_before,
+    text=[abs(v) if v != 0 else "" for v in vols_before],
+    textposition="outside", showlegend=False,
+), row=1, col=1)
+
+# After — create fills the gap
+prices_a = ["$30.17", "$30.18", "$30.19", "$30.20", "$30.21"]
+vols_after = [200, 3000, 800, -1200, -5100]
+colors_after = ["rgba(55,128,191,0.8)"]*2 + ["rgba(76,175,80,0.9)"] + ["rgba(219,64,82,0.8)"]*2
+
+fig.add_trace(go.Bar(
+    x=prices_a, y=vols_after, marker_color=colors_after,
+    text=[abs(v) if v != 0 else "" for v in vols_after],
+    textposition="outside", showlegend=False,
+), row=1, col=2)
+
+fig.update_layout(template="plotly_white", height=300,
+                  margin=dict(t=50, b=40, l=50, r=30),
+                  font=dict(family="Inter, -apple-system, sans-serif", size=11))
+fig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor="#2c3e50")
+fig.show()
+```
+
+## Clean: Maintaining Book Invariants
+
+After every modification, a **clean** pass runs on the affected side to ensure the book always has exactly `N` price levels (default 4) with no gaps. It removes zero-volume levels, fills in any missing levels by sampling from the empirical queue size distribution, and trims levels beyond the allowed range.
+
+**Example**: a trade sweeps the best bid at \$30.19 and second level at \$30.18. Before clean, the bid side has only 2 levels left. Clean fills in two new levels below.
+
+```{python}
+fig = make_subplots(rows=1, cols=2,
+    subplot_titles=("After trade, before clean (2 levels)", "After clean (4 levels restored)"),
+    horizontal_spacing=0.12)
+
+# Before clean — only 2 bid levels remain
+prices_before = ["$30.16", "$30.17"]
+vols_before = [1600, 200]
+colors_before = ["rgba(55,128,191,0.8)"]*2
+
+fig.add_trace(go.Bar(
+    x=prices_before, y=vols_before, marker_color=colors_before,
+    text=vols_before, textposition="outside", showlegend=False,
+), row=1, col=1)
+
+# After clean — 4 levels, two new ones sampled (shown in green)
+prices_after = ["$30.14", "$30.15", "$30.16", "$30.17"]
+vols_after = [3, 7, 1600, 200]
+colors_after = ["rgba(76,175,80,0.7)", "rgba(76,175,80,0.7)",
+                "rgba(55,128,191,0.8)", "rgba(55,128,191,0.8)"]
+
+fig.add_trace(go.Bar(
+    x=prices_after, y=vols_after, marker_color=colors_after,
+    text=vols_after, textposition="outside", showlegend=False,
+), row=1, col=2)
+
+fig.update_layout(template="plotly_white", height=280,
+                  margin=dict(t=50, b=40, l=50, r=30),
+                  font=dict(family="Inter, -apple-system, sans-serif", size=11))
+fig.update_yaxes(range=[0, 2000])
+fig.show()
+```
+
+The green bars are **sampled** from the empirical queue size distribution at the corresponding depth level. The best bid is now \$30.17, and the book extends 3 ticks below it to maintain 4 levels.
+
+## Fill Recording
+
+When processing a trade, the book can optionally record **fills** — a vector of `{price, size}` pairs for each level consumed:
+
+```{python}
+import plotly.graph_objects as go
+
+fig = go.Figure(go.Waterfall(
+    x=["$30.19<br>(2000 avail)", "$30.18<br>(3000 avail)", "$30.17<br>(200 avail)", "Total filled"],
+    y=[2000, 3000, 200, 0],
+    measure=["relative", "relative", "relative", "total"],
+    text=["2000", "3000", "200", "5200"],
+    textposition="outside",
+    connector=dict(line=dict(color="rgba(0,0,0,0.3)", width=1)),
+    increasing=dict(marker_color="rgba(55,128,191,0.8)"),
+    totals=dict(marker_color="rgba(44,62,80,0.9)"),
+))
+
+fig.update_layout(
+    title=dict(text="Multi-level fill: Sell 5200 into bid side", font=dict(size=14)),
+    template="plotly_white", height=300,
+    margin=dict(t=50, b=40, l=50, r=30),
+    font=dict(family="Inter, -apple-system, sans-serif"),
+    yaxis_title="Shares filled",
+)
+fig.show()
+```
+
+## C++ Implementation
+
+The implementation lives in `cpp/include/orderbook.h` and `cpp/src/orderbook.cpp`.
+
+### Why `std::map`?
+
+Each side of the book is a `std::map<int32_t, int32_t>` mapping price (in ticks) to volume. A sorted map gives us:
+
+- **Natural ordering** — best bid is always `bid_.rbegin()` (highest key), best ask is `ask_.begin()` (lowest key). No manual sorting needed.
+- **$O(\log n)$ insert/erase/lookup** — since we maintain only `N` levels (default 4), this is effectively constant.
+- **Automatic cleanup** — erasing a key removes the level entirely; no tombstones or compaction.
+
+An array or vector indexed by price offset would also work (and be faster for fixed-depth books), but the map handles variable-depth books and price moves cleanly without reindexing.
+
+### Key Types
+
+```cpp
+enum class Side: int8_t { Bid = -1, Ask = 1 };
+
+enum class OrderType: uint8_t {
+    Add = 0, Cancel = 1, Trade = 2, CreateBid = 3, CreateAsk = 4
+};
+
+struct Order {
+    OrderType type;
+    Side side;
+    int32_t price;      // in tick multiples
+    int32_t size;        // in shares (MES-scaled)
+    int64_t ts;          // timestamp (nanoseconds)
+    bool rejected = false;
+    bool partial = false;
+};
+
+struct Fill {
+    int32_t price;
+    int32_t size;
+};
+```
+
+`Order` is passed by reference to `process()` — the book mutates `rejected` and `partial` flags in place to signal outcomes back to the caller. `Fill` records are optionally collected during sweeps via an output pointer.
+
+### Queue Distributions
+
+When the clean pass needs to regenerate a depleted level, it samples from empirical queue size distributions. These are stored as cumulative probability vectors (one per side per depth level) and sampled via inverse-CDF:
+
+```cpp
+int32_t sample(Side side, int level, std::mt19937_64 &rng) const {
+    double u = uniform(0, 1);
+    auto it = std::lower_bound(cum_probs[side][level].begin(),
+                                cum_probs[side][level].end(), u);
+    return (it - cum_probs[side][level].begin()) * mes[level];
+}
+```
+
+The result is scaled by the MES at that level, so regenerated queues have realistic volumes in shares.
+
+### Init and MES Scaling
+
+`init()` takes raw queue sizes (in normalised units from the estimation pipeline) and scales each level by its MES. The map's natural ordering means iterating `bid_.rbegin()→rend()` visits best-to-worst, matching level 0, 1, 2, ... to `mes[0], mes[1], mes[2], ...`.
+
+### Public API
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `best_bid()` | `int32_t` | Highest bid price |
+| `best_ask()` | `int32_t` | Lowest ask price |
+| `best_bid_vol()` | `int32_t` | Volume at best bid |
+| `best_ask_vol()` | `int32_t` | Volume at best ask |
+| `volume_at(side, price)` | `int32_t` | Volume at any price (0 if absent) |
+| `spread()` | `int32_t` | `best_ask - best_bid` |
+| `imbalance()` | `double` | $(q_{-1} - q_1) / (q_{-1} + q_1)$ |
+| `process(order, fills*)` | `void` | Apply order, optionally record fills |

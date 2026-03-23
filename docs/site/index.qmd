@@ -1,0 +1,66 @@
+---
+title: "Queue-Reactive LOB Simulator"
+subtitle: "A limit order book simulation framework based on the Queue-Reactive model for large-tick assets"
+page-layout: full
+---
+
+::: {.hero}
+
+::: {.hero-content}
+
+The QR simulator reproduces realistic order book dynamics by sampling events — limit orders, cancellations, trades — from empirical distributions conditioned on the current book state. A C++ engine handles the simulation loop; a Python pipeline estimates parameters from [Databento](https://databento.com) market data.
+
+::: {.hero-badges}
+[C++20]{.badge} [CMake]{.badge} [Python 3.11+]{.badge} [Apache Arrow]{.badge}
+:::
+
+:::
+
+:::
+
+## Documentation
+
+::: {.card-grid}
+
+::: {.doc-card}
+### [Model and Data](model.qmd)
+The QR framework, data sources, estimation pipeline, and the probability biasing mechanism for market impact.
+:::
+
+::: {.doc-card}
+### [Order Book](orderbook.qmd)
+Book representation, event types, order processing transitions, and the C++ `std::map`-based implementation.
+:::
+
+::: {.doc-card}
+### [Simulation Loop](simulation.qmd)
+How to configure, assemble, and run a QR simulation — from a barebones loop to bias injection and output recording.
+:::
+
+:::
+
+## Quick Start
+
+```bash
+git clone --recurse-submodules https://github.com/SaadSouilmi/Queue-Reactive.git
+cd Queue-Reactive
+git submodule update --init --recursive
+podman build -t qr .
+podman run --rm -it qr bash
+```
+
+## Project Layout
+
+```
+qr/
+├── cpp/
+│   ├── include/        # Headers (orderbook, qr_model, simulation)
+│   ├── src/            # Implementation
+│   └── bin/            # Executables (sample, sample_strategy, run_metaorder, ...)
+├── src/qr/             # Python estimation & analysis package
+├── scripts/            # Plotting scripts
+├── notebooks/          # Jupyter notebooks (paper figures, calibration)
+├── configs/            # JSON simulation configs
+├── tests/              # C++ unit tests (GoogleTest)
+└── data/               # Input data & results
+```

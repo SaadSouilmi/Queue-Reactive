@@ -1,0 +1,10 @@
+{
+  "name": "qr",
+  "version": "0.1.0",
+  "dependencies": [
+    {
+      "name": "arrow",
+      "features": ["parquet"]
+    }
+  ]
+}

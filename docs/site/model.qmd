@@ -1,0 +1,217 @@
+---
+title: "Model and Data"
+subtitle: "The QR framework, estimation pipeline, and market impact"
+format:
+  html:
+    code-fold: true
+---
+
+## The Queue-Reactive Model
+
+The queue-reactive (QR) model treats the limit order book as a **continuous-time Markov jump process**: the rate of each event (limit order, cancellation, market order) depends on the current state of the book.
+
+In the original formulation of [Huang et al. (2015)](https://doi.org/10.1080/01621459.2014.982278), each queue is treated independently and event intensities are functions of individual queue sizes. We simplify the state conditioning: instead of the full queue vector, we project onto two quantities:
+
+$$
+\Phi(\text{LOB}) = (\text{Imb}, n)
+$$
+
+where $\text{Imb} = (q_{-1} - q_1)/(q_{-1} + q_1)$ is the volume imbalance at the best level and $n$ is the bid-ask spread in ticks. This captures most of the bid-ask dependency that matters while keeping estimation tractable.
+
+### Sampling loop
+
+In state $\Phi(\text{LOB})$, the total event rate and per-event probabilities are:
+
+$$
+\Lambda = \sum_e \lambda^e(\Phi), \qquad p^e = \frac{\lambda^e(\Phi)}{\Lambda}
+$$
+
+The simulation draws two independent quantities at each step:
+
+1. **Which event**: $e^* \sim \text{Categorical}(p^e)$
+2. **When**: $\Delta t \sim \text{Exp}(\Lambda)$
+3. **How large**: $v^* \sim p(v \mid \Phi, e^*)$
+
+Then the event is applied to the book and the state updates.
+
+### Event set
+
+When spread $= 1$: Add and Cancel at $q_{\pm 1}, q_{\pm 2}$; Trade at $q_{\pm 1}$.
+
+When spread $\geq 2$: only CreateBid and CreateAsk fire (one tick inside the spread), closing the gap before normal activity resumes. This makes sense for large-tick assets since participants rarely cross a spread wider than 1 tick.
+
+### Random volumes
+
+The importance of modelling random order sizes in the QR framework was noted by [Bodor & Carlier (2025)](https://arxiv.org/abs/2405.18594). In our implementation, we sample event sizes from empirical distributions conditioned on $(\Phi, e, q_{\pm i})$, capped at 50 MES. This lets queue depletion arise naturally from a single large trade rather than requiring a dedicated event type.
+
+## Data
+
+### Source
+
+All estimation uses [Databento MBP-10](https://databento.com/docs/schemas-and-data-formats/mbp-10) data covering **December 2023 to December 2025**. The raw MBP-10 feed is passed through a preprocessing step (see `src/qr/preprocessing.py`) that aggregates trade and create messages, computes queue sizes, and normalises volumes by MES. Four S&P 500 constituents trading around the \$30 mark: **PFE**, **INTC**, **VZ**, **T**.
+
+To avoid open/close effects, we discard the first and last 30 minutes of each trading day, keeping the **10:00–15:30 ET** window.
+
+### Preprocessing
+
+Raw MBP-10 data is preprocessed into the QR format — one row per event with queue sizes, prices, imbalance, spread, and event classification:
+
+```python
+from pathlib import Path
+from qr.preprocessing import mbp10_to_qr
+
+# One day of raw MBP-10 data
+file = Path("data/PFE/mbp-10-raw/2024-06-03.parquet")
+df = mbp10_to_qr(file).collect()
+```
+
+See the docstring of `mbp10_to_qr` in `src/qr/preprocessing.py` for the full output schema.
+
+::: {.callout-note}
+For data loading we use `lobib`, an internal tool. You can replace this with whatever data loader fits your setup — `mbp10_to_qr` expects a standard Databento MBP-10 parquet file as input.
+:::
+
+### Estimation procedure
+
+All parameters are estimated by maximum likelihood. For each state $\Phi$:
+
+- **Event probabilities**: empirical frequencies
+$$
+\hat{p}^e(\Phi) = \frac{\#\{k : e_k = e, \Phi_k = \Phi\}}{\#\{k : \Phi_k = \Phi\}}
+$$
+
+- **Total intensity**: inverse of mean waiting time
+$$
+\hat{\Lambda}(\Phi) = \left(\frac{1}{N_\Phi}\sum_{k \in \mathcal{K}(\Phi)} \Delta t_k\right)^{-1}
+$$
+
+- **Size distributions**: empirical CDF per $(\Phi, e, q)$ cell
+
+After estimation, all statistics are **symmetrised** between bid and ask: the probability of a bid event at imbalance $+x$ is averaged with the corresponding ask event at $-x$. This eliminates systematic drift and halves the number of parameters.
+
+### Output files
+
+The estimation pipeline (run with `uv`) produces the following files in `data/{ticker}/qr_params/`:
+
+#### `event_probabilities.csv`
+
+Event probabilities $p^e(\text{Imb}, n)$ for all events.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `imbalance` | float | Imbalance bin (0.0 to 1.0, positive half only — mirrored at load time) |
+| `spread` | int | 1 or 2 |
+| `event` | str | `Add`, `Cancel`, `Trade`, `Create_Bid`, `Create_Ask` |
+| `queue` | int | Signed queue number: -2, -1, 1, 2 (0 for creates) |
+| `side` | int | -1 (bid) or 1 (ask) |
+| `probability` | float | Estimated $\hat{p}^e$ |
+
+#### `delta_t_exponential.csv`
+
+Mean inter-arrival time per state, used for exponential $\Delta t$ sampling.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `imbalance` | float | Imbalance bin |
+| `spread` | int | 1 or 2 |
+| `average_dt` | float | Mean $\Delta t$ in nanoseconds |
+
+#### `delta_t_gmm.csv`
+
+5-component Gaussian mixture parameters for $\log_{10}(\Delta t)$, per event type.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `imbalance` | float | Imbalance bin |
+| `spread` | int | 1 or 2 |
+| `event` | str | Event type |
+| `queue` | int | Signed queue number |
+| `side` | int | -1 or 1 |
+| `w_1`..`w_5` | float | Component weights |
+| `mu_1`..`mu_5` | float | Component means (in $\log_{10}$ ns) |
+| `sig_1`..`sig_5` | float | Component standard deviations |
+
+#### `size_distrib.csv`
+
+Empirical size probability mass functions per $(\text{Imb}, e, q)$ cell.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `imbalance` | float | Imbalance bin |
+| `spread` | float | 1 or 2 |
+| `event` | str | Event type |
+| `queue` | float | Signed queue number |
+| `side` | float | -1 or 1 |
+| `1`..`50` | float | Probability of size $v$ (in MES units) |
+
+#### `invariant_distributions_qmax100.csv`
+
+Stationary queue size distributions used by the order book to regenerate levels during the clean pass.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `queue_level` | int | Level index (1–4) |
+| `0`..`100` | float | Probability of queue size $q$ (in MES units) |
+
+#### `params.json`
+
+```json
+{
+  "median_event_sizes": {"1": 200, "2": 200, "3": 150, "4": 100},
+  "total_best_quantiles": [17, 25, 35, 51]
+}
+```
+
+MES per queue level (in shares) and the quantile boundaries for total best volume binning.
+
+Per-day intermediate results are stored as parquet files in `data/{ticker}/daily_estimates/`, one per trading day.
+
+## Biasing Probabilities
+
+The QR model samples the next event from conditional probabilities $p^e(\Phi)$. We can **bias** these probabilities to inject external signals into the book dynamics. The mechanism is general: multiply selected event probabilities by a factor and renormalise. The main application is market impact, but the same interface supports any signal (alpha, strategy feedback, etc.).
+
+### How it works
+
+Each `StateParams` holds two probability vectors: `base_probs` (immutable, estimated from data) and `probs` (working copy that gets biased before sampling). Given a bias factor $b$:
+
+- If $b > 0$: bid (sell) trade probabilities are multiplied by $e^b$
+- If $b < 0$: ask (buy) trade probabilities are multiplied by $e^{-b}$
+- All non-trade events keep their base probabilities
+
+The cumulative distribution is then recomputed for sampling. This is the actual implementation:
+
+```cpp
+void bias(double b) {
+    total = 0.0;
+    for (size_t i = 0; i < events.size(); i++) {
+        if (events[i].type == OrderType::Trade) {
+            double factor = 1;
+            if ((events[i].side == Side::Bid) && (b > 0)) {
+                factor = std::exp(b);
+            } else if ((events[i].side == Side::Ask) && (b < 0)) {
+                factor = std::exp(-b);
+            }
+            probs[i] = base_probs[i] * factor;
+        } else
+            probs[i] = base_probs[i];
+        total += probs[i];
+    }
+    cum_probs[0] = probs[0];
+    for (size_t i = 1; i < probs.size(); i++)
+        cum_probs[i] = cum_probs[i - 1] + probs[i];
+}
+```
+
+The biasing is **single-sided**: only the side opposing the signal gets boosted. When `b > 0` (e.g. recent net buying), only sell trades become more likely; when `b < 0`, only buy trades. Non-trade events are unaffected, so the overall event mix stays close to the baseline.
+
+Sampling then draws from the biased distribution:
+
+```cpp
+const Event &sample_event(std::mt19937_64 &rng) const {
+    double u = std::uniform_real_distribution<>(0, total)(rng);
+    auto it = std::lower_bound(cum_probs.begin(), cum_probs.end(), u);
+    return events[it - cum_probs.begin()];
+}
+```
+
+Note that `sample_event` draws uniformly in $[0, \text{total})$ rather than $[0, 1)$ — the probabilities are not renormalised to sum to 1, but the sampling range adjusts to `total`, which is equivalent and avoids a division pass.
