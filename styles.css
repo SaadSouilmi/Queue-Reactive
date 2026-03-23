@@ -1,0 +1,157 @@
+/* ── Academic clean style ── */
+
+/* Subtle top border accent */
+body {
+  border-top: 3px solid #2c3e50;
+}
+
+/* Title styling */
+.quarto-title h1.title {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #2c3e50;
+}
+
+.quarto-title .subtitle {
+  font-style: italic;
+  color: #5a6c7d;
+  font-size: 1.1rem;
+}
+
+/* Sidebar refinements */
+.sidebar-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #2c3e50;
+}
+
+.sidebar-item .sidebar-item-text {
+  font-size: 0.9rem;
+}
+
+.sidebar .sidebar-section .sidebar-item.active .sidebar-item-text {
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+/* Headings */
+h1, h2, h3, h4 {
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+h2 {
+  border-bottom: 1px solid #dee2e6;
+  padding-bottom: 0.4rem;
+  margin-top: 2.5rem;
+}
+
+h3 {
+  margin-top: 2rem;
+}
+
+/* Links */
+a {
+  color: #34698a;
+  text-decoration: none;
+}
+
+a:hover {
+  color: #2c3e50;
+  text-decoration: underline;
+}
+
+/* Code blocks */
+pre.sourceCode {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  padding: 1rem;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+code {
+  color: #c7254e;
+  background: #f8f9fa;
+  padding: 0.15em 0.35em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+pre code {
+  color: inherit;
+  background: none;
+  padding: 0;
+}
+
+/* Tables */
+table {
+  font-size: 0.92rem;
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1.5rem 0;
+}
+
+thead {
+  border-bottom: 2px solid #2c3e50;
+}
+
+th {
+  font-weight: 600;
+  color: #2c3e50;
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+}
+
+td {
+  padding: 0.5rem 0.8rem;
+  border-bottom: 1px solid #e9ecef;
+}
+
+tbody tr:hover {
+  background: #f8f9fa;
+}
+
+/* Callouts */
+.callout {
+  border-radius: 6px;
+  margin: 1.5rem 0;
+}
+
+/* Mermaid diagrams */
+.mermaid svg {
+  max-width: 100%;
+}
+
+/* Block quotes — for epigraphs */
+blockquote {
+  border-left: 3px solid #2c3e50;
+  padding-left: 1.2rem;
+  color: #5a6c7d;
+  font-style: italic;
+  margin: 1.5rem 0;
+}
+
+/* Page footer */
+.nav-footer {
+  font-size: 0.85rem;
+  color: #8895a4;
+  border-top: 1px solid #e9ecef;
+}
+
+/* TOC refinements */
+.sidebar nav[role="doc-toc"] a {
+  font-size: 0.88rem;
+  color: #5a6c7d;
+}
+
+.sidebar nav[role="doc-toc"] a.active {
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+/* Math display */
+.math.display {
+  margin: 1.5rem 0;
+}

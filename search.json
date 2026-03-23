@@ -1,0 +1,250 @@
+[
+  {
+    "objectID": "orderbook.html",
+    "href": "orderbook.html",
+    "title": "Order Book",
+    "section": "",
+    "text": "The order book is a collection of price levels, each holding a volume of resting orders. Prices are represented internally as integer multiples of the tick size (e.g. $30.19 → 3019), so all price arithmetic is exact integer operations. We index queues relative to the current best prices — not a fixed reference price:\n\n\\(q_{-1}\\): best bid (highest buy price)\n\\(q_{1}\\): best ask (lowest sell price)\n\\(q_{-i}\\) for \\(i \\geq 2\\): \\(i-1\\) ticks below the best bid\n\\(q_{+i}\\) for \\(i \\geq 2\\): \\(i-1\\) ticks above the best ask\n\n\n\nCode\nimport plotly.graph_objects as go\n\ndef plot_lob(bid_prices, bid_vols, ask_prices, ask_vols, title=\"\", annotations=None, height=350):\n    fig = go.Figure()\n\n    # Bids (blue, bars going up)\n    fig.add_trace(go.Bar(\n        x=[f\"${p/100:.2f}\" for p in bid_prices],\n        y=bid_vols,\n        marker_color=\"rgba(55, 128, 191, 0.8)\",\n        marker_line=dict(color=\"rgba(55, 128, 191, 1)\", width=1.5),\n        text=[f\"q&lt;sub&gt;{-len(bid_prices)+i}&lt;/sub&gt; = {v}\" for i, v in enumerate(bid_vols)],\n        textposition=\"outside\",\n        textfont=dict(size=11),\n        name=\"Bid\",\n        hovertemplate=\"Price: %{x}&lt;br&gt;Volume: %{y}&lt;extra&gt;Bid&lt;/extra&gt;\",\n    ))\n\n    # Asks (red, bars going down — plotted as negative)\n    fig.add_trace(go.Bar(\n        x=[f\"${p/100:.2f}\" for p in ask_prices],\n        y=[-v for v in ask_vols],\n        marker_color=\"rgba(219, 64, 82, 0.8)\",\n        marker_line=dict(color=\"rgba(219, 64, 82, 1)\", width=1.5),\n        text=[f\"q&lt;sub&gt;{i+1}&lt;/sub&gt; = {v}\" for i, v in enumerate(ask_vols)],\n        textposition=\"outside\",\n        textfont=dict(size=11),\n        name=\"Ask\",\n        hovertemplate=\"Price: %{x}&lt;br&gt;Volume: %{customdata}&lt;extra&gt;Ask&lt;/extra&gt;\",\n        customdata=ask_vols,\n    ))\n\n    max_vol = max(max(bid_vols), max(ask_vols))\n\n    fig.update_layout(\n        title=dict(text=title, font=dict(size=14)),\n        xaxis=dict(title=\"Price\", categoryorder=\"array\",\n                   categoryarray=[f\"${p/100:.2f}\" for p in sorted(bid_prices + ask_prices)]),\n        yaxis=dict(title=\"Volume\", range=[-max_vol*1.4, max_vol*1.4], zeroline=True,\n                   zerolinewidth=2, zerolinecolor=\"#2c3e50\"),\n        template=\"plotly_white\",\n        height=height,\n        margin=dict(t=50, b=50, l=60, r=30),\n        showlegend=True,\n        legend=dict(orientation=\"h\", yanchor=\"bottom\", y=1.02, xanchor=\"right\", x=1),\n        font=dict(family=\"Palatino, Georgia, serif\"),\n        bargap=0.15,\n    )\n\n    if annotations:\n        fig.update_layout(annotations=annotations)\n\n    return fig\n\n# Initial book state\nfig = plot_lob(\n    bid_prices=[2997, 2998, 2999, 3000],\n    bid_vols=[6, 0, 9, 5],\n    ask_prices=[3001, 3002, 3003, 3004],\n    ask_vols=[7, 0, 4, 3],\n    title=\"Limit Order Book — queues indexed from best\",\n    annotations=[\n        dict(x=3.5, y=0, text=\"&lt;b&gt;spread n=1&lt;/b&gt;\", showarrow=True,\n             ax=0, ay=-40, font=dict(size=11, color=\"#2c3e50\")),\n    ],\n)\nfig.show()\n\n\n                            \n                                            \n\n\nTwo key quantities define the state projection \\(\\Phi(\\text{LOB})\\):\n\\[\n\\text{Imbalance} = \\frac{q_{-1} - q_1}{q_{-1} + q_1} \\in [-1, 1]\n\\]\n\\[\n\\text{Spread} = n \\text{ (in ticks)}\n\\]\nThe imbalance is discretised into 21 bins of width 0.1. The zero bin captures exact balance only — negative and positive imbalances are never mixed.\n\n\nCode\nimport plotly.graph_objects as go\nimport numpy as np\n\nbins = np.round(np.arange(-1.0, 1.1, 0.1), 1)\ncolors = [\"rgba(55, 128, 191, 0.6)\" if b &lt; 0 else\n          \"rgba(219, 64, 82, 0.6)\" if b &gt; 0 else\n          \"rgba(255, 193, 7, 0.8)\" for b in bins]\n\nfig = go.Figure(go.Bar(\n    x=bins, y=[1]*len(bins),\n    marker_color=colors,\n    marker_line=dict(color=\"#2c3e50\", width=0.5),\n    hovertemplate=\"Bin: %{x}&lt;extra&gt;&lt;/extra&gt;\",\n    width=0.08,\n))\n\n# Example points\nfor val, target, color, name in [\n    (-0.47, -0.5, \"#3780bf\", \"−0.47 → bin −0.5\"),\n    (0.13, 0.2, \"#db4052\", \"0.13 → bin 0.2\"),\n    (-0.03, -0.1, \"#ff9800\", \"−0.03 → bin −0.1\"),\n]:\n    fig.add_annotation(x=val, y=1.15, text=f\"&lt;b&gt;{val}&lt;/b&gt;\", showarrow=True,\n                       ax=target - val, ay=-30, arrowhead=2, arrowcolor=color,\n                       font=dict(size=10, color=color))\n\nfig.update_layout(\n    title=dict(text=\"Imbalance binning scheme (21 bins)\", font=dict(size=14)),\n    xaxis=dict(title=\"Imbalance\", dtick=0.2),\n    yaxis=dict(visible=False, range=[0, 1.6]),\n    template=\"plotly_white\",\n    height=200,\n    margin=dict(t=60, b=40, l=40, r=30),\n    font=dict(family=\"Palatino, Georgia, serif\"),\n)\nfig.show()\n\n\n                            \n                                            \n\n\nThe C++ binning logic in QRModel::get_imbalance_bin():\n// 21 bins: idx 0 = −1.0, idx 10 = 0.0, idx 20 = 1.0\nuint8_t get_imbalance_bin(double imbalance) {\n    imbalance = std::clamp(imbalance, -1.0, 1.0);\n\n    if (imbalance == 0.0)\n        return 10;                                    // point bin\n\n    if (imbalance &lt; 0.0) {\n        // [-1, -0.9) → 0,  [-0.9, -0.8) → 1,  …,  [-0.1, 0) → 9\n        int bin = static_cast&lt;int&gt;(std::floor(imbalance * 10.0)) + 10;\n        return static_cast&lt;uint8_t&gt;(std::clamp(bin, 0, 9));\n    } else {\n        // (0, 0.1] → 11,  (0.1, 0.2] → 12,  …,  (0.9, 1] → 20\n        int bin = static_cast&lt;int&gt;(std::ceil(imbalance * 10.0)) + 10;\n        return static_cast&lt;uint8_t&gt;(std::clamp(bin, 11, 20));\n    }\n}\nNegative bins are left-closed (floor), positive bins are right-closed (ceil), ensuring values just above or below zero never land in the zero bin.",
+    "crumbs": [
+      "Implementation",
+      "Order Book"
+    ]
+  },
+  {
+    "objectID": "orderbook.html#book-representation",
+    "href": "orderbook.html#book-representation",
+    "title": "Order Book",
+    "section": "",
+    "text": "The order book is a collection of price levels, each holding a volume of resting orders. Prices are represented internally as integer multiples of the tick size (e.g. $30.19 → 3019), so all price arithmetic is exact integer operations. We index queues relative to the current best prices — not a fixed reference price:\n\n\\(q_{-1}\\): best bid (highest buy price)\n\\(q_{1}\\): best ask (lowest sell price)\n\\(q_{-i}\\) for \\(i \\geq 2\\): \\(i-1\\) ticks below the best bid\n\\(q_{+i}\\) for \\(i \\geq 2\\): \\(i-1\\) ticks above the best ask\n\n\n\nCode\nimport plotly.graph_objects as go\n\ndef plot_lob(bid_prices, bid_vols, ask_prices, ask_vols, title=\"\", annotations=None, height=350):\n    fig = go.Figure()\n\n    # Bids (blue, bars going up)\n    fig.add_trace(go.Bar(\n        x=[f\"${p/100:.2f}\" for p in bid_prices],\n        y=bid_vols,\n        marker_color=\"rgba(55, 128, 191, 0.8)\",\n        marker_line=dict(color=\"rgba(55, 128, 191, 1)\", width=1.5),\n        text=[f\"q&lt;sub&gt;{-len(bid_prices)+i}&lt;/sub&gt; = {v}\" for i, v in enumerate(bid_vols)],\n        textposition=\"outside\",\n        textfont=dict(size=11),\n        name=\"Bid\",\n        hovertemplate=\"Price: %{x}&lt;br&gt;Volume: %{y}&lt;extra&gt;Bid&lt;/extra&gt;\",\n    ))\n\n    # Asks (red, bars going down — plotted as negative)\n    fig.add_trace(go.Bar(\n        x=[f\"${p/100:.2f}\" for p in ask_prices],\n        y=[-v for v in ask_vols],\n        marker_color=\"rgba(219, 64, 82, 0.8)\",\n        marker_line=dict(color=\"rgba(219, 64, 82, 1)\", width=1.5),\n        text=[f\"q&lt;sub&gt;{i+1}&lt;/sub&gt; = {v}\" for i, v in enumerate(ask_vols)],\n        textposition=\"outside\",\n        textfont=dict(size=11),\n        name=\"Ask\",\n        hovertemplate=\"Price: %{x}&lt;br&gt;Volume: %{customdata}&lt;extra&gt;Ask&lt;/extra&gt;\",\n        customdata=ask_vols,\n    ))\n\n    max_vol = max(max(bid_vols), max(ask_vols))\n\n    fig.update_layout(\n        title=dict(text=title, font=dict(size=14)),\n        xaxis=dict(title=\"Price\", categoryorder=\"array\",\n                   categoryarray=[f\"${p/100:.2f}\" for p in sorted(bid_prices + ask_prices)]),\n        yaxis=dict(title=\"Volume\", range=[-max_vol*1.4, max_vol*1.4], zeroline=True,\n                   zerolinewidth=2, zerolinecolor=\"#2c3e50\"),\n        template=\"plotly_white\",\n        height=height,\n        margin=dict(t=50, b=50, l=60, r=30),\n        showlegend=True,\n        legend=dict(orientation=\"h\", yanchor=\"bottom\", y=1.02, xanchor=\"right\", x=1),\n        font=dict(family=\"Palatino, Georgia, serif\"),\n        bargap=0.15,\n    )\n\n    if annotations:\n        fig.update_layout(annotations=annotations)\n\n    return fig\n\n# Initial book state\nfig = plot_lob(\n    bid_prices=[2997, 2998, 2999, 3000],\n    bid_vols=[6, 0, 9, 5],\n    ask_prices=[3001, 3002, 3003, 3004],\n    ask_vols=[7, 0, 4, 3],\n    title=\"Limit Order Book — queues indexed from best\",\n    annotations=[\n        dict(x=3.5, y=0, text=\"&lt;b&gt;spread n=1&lt;/b&gt;\", showarrow=True,\n             ax=0, ay=-40, font=dict(size=11, color=\"#2c3e50\")),\n    ],\n)\nfig.show()\n\n\n                            \n                                            \n\n\nTwo key quantities define the state projection \\(\\Phi(\\text{LOB})\\):\n\\[\n\\text{Imbalance} = \\frac{q_{-1} - q_1}{q_{-1} + q_1} \\in [-1, 1]\n\\]\n\\[\n\\text{Spread} = n \\text{ (in ticks)}\n\\]\nThe imbalance is discretised into 21 bins of width 0.1. The zero bin captures exact balance only — negative and positive imbalances are never mixed.\n\n\nCode\nimport plotly.graph_objects as go\nimport numpy as np\n\nbins = np.round(np.arange(-1.0, 1.1, 0.1), 1)\ncolors = [\"rgba(55, 128, 191, 0.6)\" if b &lt; 0 else\n          \"rgba(219, 64, 82, 0.6)\" if b &gt; 0 else\n          \"rgba(255, 193, 7, 0.8)\" for b in bins]\n\nfig = go.Figure(go.Bar(\n    x=bins, y=[1]*len(bins),\n    marker_color=colors,\n    marker_line=dict(color=\"#2c3e50\", width=0.5),\n    hovertemplate=\"Bin: %{x}&lt;extra&gt;&lt;/extra&gt;\",\n    width=0.08,\n))\n\n# Example points\nfor val, target, color, name in [\n    (-0.47, -0.5, \"#3780bf\", \"−0.47 → bin −0.5\"),\n    (0.13, 0.2, \"#db4052\", \"0.13 → bin 0.2\"),\n    (-0.03, -0.1, \"#ff9800\", \"−0.03 → bin −0.1\"),\n]:\n    fig.add_annotation(x=val, y=1.15, text=f\"&lt;b&gt;{val}&lt;/b&gt;\", showarrow=True,\n                       ax=target - val, ay=-30, arrowhead=2, arrowcolor=color,\n                       font=dict(size=10, color=color))\n\nfig.update_layout(\n    title=dict(text=\"Imbalance binning scheme (21 bins)\", font=dict(size=14)),\n    xaxis=dict(title=\"Imbalance\", dtick=0.2),\n    yaxis=dict(visible=False, range=[0, 1.6]),\n    template=\"plotly_white\",\n    height=200,\n    margin=dict(t=60, b=40, l=40, r=30),\n    font=dict(family=\"Palatino, Georgia, serif\"),\n)\nfig.show()\n\n\n                            \n                                            \n\n\nThe C++ binning logic in QRModel::get_imbalance_bin():\n// 21 bins: idx 0 = −1.0, idx 10 = 0.0, idx 20 = 1.0\nuint8_t get_imbalance_bin(double imbalance) {\n    imbalance = std::clamp(imbalance, -1.0, 1.0);\n\n    if (imbalance == 0.0)\n        return 10;                                    // point bin\n\n    if (imbalance &lt; 0.0) {\n        // [-1, -0.9) → 0,  [-0.9, -0.8) → 1,  …,  [-0.1, 0) → 9\n        int bin = static_cast&lt;int&gt;(std::floor(imbalance * 10.0)) + 10;\n        return static_cast&lt;uint8_t&gt;(std::clamp(bin, 0, 9));\n    } else {\n        // (0, 0.1] → 11,  (0.1, 0.2] → 12,  …,  (0.9, 1] → 20\n        int bin = static_cast&lt;int&gt;(std::ceil(imbalance * 10.0)) + 10;\n        return static_cast&lt;uint8_t&gt;(std::clamp(bin, 11, 20));\n    }\n}\nNegative bins are left-closed (floor), positive bins are right-closed (ceil), ensuring values just above or below zero never land in the zero bin.",
+    "crumbs": [
+      "Implementation",
+      "Order Book"
+    ]
+  },
+  {
+    "objectID": "orderbook.html#volume-normalisation",
+    "href": "orderbook.html#volume-normalisation",
+    "title": "Order Book",
+    "section": "Volume Normalisation",
+    "text": "Volume Normalisation\nIn the empirical data, all queue sizes and event volumes are normalised by the median event size (MES) at each queue level and rounded up to integers. The MES is computed separately for each level (\\(\\text{MES}_1, \\text{MES}_2, \\text{MES}_3, \\text{MES}_4\\)) and symmetrised between bid and ask. In the simulation, event sizes are sampled in normalised units and then scaled back by the MES of the target queue level. This means that when a price moves and queues shift — e.g. \\(q_{-2}\\) becomes the new \\(q_{-1}\\) after the best bid is depleted — subsequent events at that queue are now sampled and scaled using \\(\\text{MES}_1\\) instead of \\(\\text{MES}_2\\). The queue volume itself doesn’t get rescaled; it’s the event sizes hitting that queue that change because they are now drawn from the level-1 distribution and multiplied by \\(\\text{MES}_1\\).",
+    "crumbs": [
+      "Implementation",
+      "Order Book"
+    ]
+  },
+  {
+    "objectID": "orderbook.html#event-types",
+    "href": "orderbook.html#event-types",
+    "title": "Order Book",
+    "section": "Event Types",
+    "text": "Event Types\nAn event is a tuple \\(e = (\\mathcal{T}, s, i)\\):\n\n\n\n\n\n\n\n\n\nEvent\nSymbol\nDescription\nWhen\n\n\n\n\nAdd\nAdd\nLimit order placed at existing level\nSpread = 1\n\n\nCancel\nCancel\nResting order removed\nSpread = 1\n\n\nTrade\nTrade\nMarketable limit order executes\nSpread = 1\n\n\nCreateBid\nCreateBid\nNew bid level one tick above best bid\nSpread \\(\\geq\\) 2\n\n\nCreateAsk\nCreateAsk\nNew ask level one tick below best ask\nSpread \\(\\geq\\) 2\n\n\n\nWhen spread = 1, events target queues \\(q_{\\pm 1}\\) and \\(q_{\\pm 2}\\) (adds/cancels) or \\(q_{\\pm 1}\\) only (trades). When spread \\(\\geq\\) 2, only Create events fire — the spread closes before normal activity resumes.",
+    "crumbs": [
+      "Implementation",
+      "Order Book"
+    ]
+  },
+  {
+    "objectID": "orderbook.html#order-processing-transitions",
+    "href": "orderbook.html#order-processing-transitions",
+    "title": "Order Book",
+    "section": "Order Processing — Transitions",
+    "text": "Order Processing — Transitions\n\nAdd\nIncrements volume at an existing price level. If the price doesn’t exist in the book, the order is rejected.\n\n\nCode\nfrom plotly.subplots import make_subplots\nimport plotly.graph_objects as go\n\nfig = make_subplots(rows=1, cols=2, subplot_titles=(\"Before\", \"After Add(Bid, q₋₁, size=3)\"),\n                    horizontal_spacing=0.12)\n\nfor col, vols in [(1, [6, 0, 9, 5]), (2, [6, 0, 9, 8])]:\n    colors = [\"rgba(55,128,191,0.8)\"]*4\n    if col == 2:\n        colors[3] = \"rgba(55,128,191,1)\"  # highlight changed\n    fig.add_trace(go.Bar(\n        x=[\"q₋₄\", \"q₋₃\", \"q₋₂\", \"q₋₁\"],\n        y=vols, marker_color=colors,\n        text=vols, textposition=\"outside\",\n        showlegend=False,\n    ), row=1, col=col)\n\nfig.update_layout(template=\"plotly_white\", height=280,\n                  margin=dict(t=50, b=30, l=50, r=30),\n                  font=dict(family=\"Palatino, Georgia, serif\", size=12))\nfig.update_yaxes(range=[0, 12])\nfig.show()\n\n\n                            \n                                            \n\n\n\n\nCancel\nDecrements volume at a price level.\n\nIf size &lt; volume: normal cancel, volume reduced\nIf size ≥ volume: partial flag set, volume zeroed, level cleaned\nIf price doesn’t exist: rejected\n\n\n\nCode\nfig = make_subplots(rows=1, cols=2,\n    subplot_titles=(\"Before\", \"After Cancel(Ask, q₁, size=7) — level emptied\"),\n    horizontal_spacing=0.12)\n\nfor col, vols in [(1, [7, 0, 4, 3]), (2, [0, 4, 3, 0])]:\n    labels = [\"q₁\", \"q₂\", \"q₃\", \"q₄\"] if col == 1 else [\"q₁ (was q₂)\", \"q₂ (was q₃)\", \"q₃ (was q₄)\", \"q₄ (new)\"]\n    colors = [\"rgba(219,64,82,0.8)\"]*4\n    if col == 2:\n        colors[0] = \"rgba(219,64,82,1)\"\n    fig.add_trace(go.Bar(\n        x=labels, y=vols, marker_color=colors,\n        text=vols, textposition=\"outside\", showlegend=False,\n    ), row=1, col=col)\n\nfig.update_layout(template=\"plotly_white\", height=280,\n                  margin=dict(t=50, b=50, l=50, r=30),\n                  font=dict(family=\"Palatino, Georgia, serif\", size=11))\nfig.update_yaxes(range=[0, 10])\nfig.show()\n\n\n                            \n                                            \n\n\n\n\nTrade (Sweep)\nTrades are processed as marketable limit orders. The order sweeps through levels from best to worst until either:\n\nThe order is fully filled, or\nThe limit price is reached\n\nResidual posting: if the order isn’t fully filled after sweeping, the remaining quantity is posted to the opposite side at the limit price.\n\n\nCode\nfig = make_subplots(rows=1, cols=2,\n    subplot_titles=(\n        \"Before: Sell 3000 @ limit $30.19\",\n        \"After: 2000 filled, 1000 posted as Ask\"\n    ), horizontal_spacing=0.15)\n\n# Before — full book\nprices_b = [\"$30.16\", \"$30.17\", \"$30.18\", \"$30.19\", \"\", \"$30.20\", \"$30.21\"]\nvols_b = [1600, 200, 3000, 2000, 0, -1200, -5100]\ncolors_b = [\"rgba(55,128,191,0.8)\"]*4 + [\"white\"] + [\"rgba(219,64,82,0.8)\"]*2\n\nfig.add_trace(go.Bar(\n    x=prices_b, y=vols_b, marker_color=colors_b,\n    text=[abs(v) if v != 0 else \"\" for v in vols_b],\n    textposition=\"outside\", showlegend=False,\n), row=1, col=1)\n\n# After — swept\nprices_a = [\"$30.16\", \"$30.17\", \"$30.18\", \"\", \"$30.19\", \"$30.20\", \"$30.21\"]\nvols_a = [1600, 200, 3000, 0, -1000, -1200, -5100]\ncolors_a = [\"rgba(55,128,191,0.8)\"]*3 + [\"white\"] + [\"rgba(255,152,0,0.9)\"] + [\"rgba(219,64,82,0.8)\"]*2\n\nfig.add_trace(go.Bar(\n    x=prices_a, y=vols_a, marker_color=colors_a,\n    text=[abs(v) if v != 0 else \"\" for v in vols_a],\n    textposition=\"outside\", showlegend=False,\n), row=1, col=2)\n\nfig.update_layout(template=\"plotly_white\", height=320,\n                  margin=dict(t=50, b=40, l=50, r=30),\n                  font=dict(family=\"Palatino, Georgia, serif\", size=11))\nfig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor=\"#2c3e50\")\nfig.show()\n\n\n                            \n                                            \n\n\n\n\n\n\n\n\nNoteThe orange bar is the residual\n\n\n\nThe 1000 shares that couldn’t be filled are posted as a new ask at the limit price $30.19, becoming the new best ask. The best bid drops to $30.18.\n\n\n\n\nCreate\nInserts a new price level. CreateBid goes one tick above best bid, CreateAsk goes one tick below best ask.\nGuard: if the create price would cross the spread (bid \\(\\geq\\) best ask, or ask \\(\\leq\\) best bid), the order is rejected.\n\n\nCode\nfig = make_subplots(rows=1, cols=2,\n    subplot_titles=(\"Before: spread = 2\", \"After: CreateBid @ $30.19\"),\n    horizontal_spacing=0.12)\n\n# Before — wide spread\nprices = [\"$30.17\", \"$30.18\", \"\", \"$30.20\", \"$30.21\"]\nvols_before = [200, 3000, 0, -1200, -5100]\ncolors_before = [\"rgba(55,128,191,0.8)\"]*2 + [\"white\"] + [\"rgba(219,64,82,0.8)\"]*2\n\nfig.add_trace(go.Bar(\n    x=prices, y=vols_before, marker_color=colors_before,\n    text=[abs(v) if v != 0 else \"\" for v in vols_before],\n    textposition=\"outside\", showlegend=False,\n), row=1, col=1)\n\n# After — create fills the gap\nprices_a = [\"$30.17\", \"$30.18\", \"$30.19\", \"$30.20\", \"$30.21\"]\nvols_after = [200, 3000, 800, -1200, -5100]\ncolors_after = [\"rgba(55,128,191,0.8)\"]*2 + [\"rgba(76,175,80,0.9)\"] + [\"rgba(219,64,82,0.8)\"]*2\n\nfig.add_trace(go.Bar(\n    x=prices_a, y=vols_after, marker_color=colors_after,\n    text=[abs(v) if v != 0 else \"\" for v in vols_after],\n    textposition=\"outside\", showlegend=False,\n), row=1, col=2)\n\nfig.update_layout(template=\"plotly_white\", height=300,\n                  margin=dict(t=50, b=40, l=50, r=30),\n                  font=dict(family=\"Palatino, Georgia, serif\", size=11))\nfig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor=\"#2c3e50\")\nfig.show()",
+    "crumbs": [
+      "Implementation",
+      "Order Book"
+    ]
+  },
+  {
+    "objectID": "orderbook.html#clean-maintaining-book-invariants",
+    "href": "orderbook.html#clean-maintaining-book-invariants",
+    "title": "Order Book",
+    "section": "Clean: Maintaining Book Invariants",
+    "text": "Clean: Maintaining Book Invariants\nAfter every modification, a clean pass runs on the affected side to ensure the book always has exactly N price levels (default 4) with no gaps. It removes zero-volume levels, fills in any missing levels by sampling from the empirical queue size distribution, and trims levels beyond the allowed range.\nExample: a trade sweeps the best bid at $30.19 and second level at $30.18. Before clean, the bid side has only 2 levels left. Clean fills in two new levels below.\n\n\nCode\nfig = make_subplots(rows=1, cols=2,\n    subplot_titles=(\"After trade, before clean (2 levels)\", \"After clean (4 levels restored)\"),\n    horizontal_spacing=0.12)\n\n# Before clean — only 2 bid levels remain\nprices_before = [\"$30.16\", \"$30.17\"]\nvols_before = [1600, 200]\ncolors_before = [\"rgba(55,128,191,0.8)\"]*2\n\nfig.add_trace(go.Bar(\n    x=prices_before, y=vols_before, marker_color=colors_before,\n    text=vols_before, textposition=\"outside\", showlegend=False,\n), row=1, col=1)\n\n# After clean — 4 levels, two new ones sampled (shown in green)\nprices_after = [\"$30.14\", \"$30.15\", \"$30.16\", \"$30.17\"]\nvols_after = [3, 7, 1600, 200]\ncolors_after = [\"rgba(76,175,80,0.7)\", \"rgba(76,175,80,0.7)\",\n                \"rgba(55,128,191,0.8)\", \"rgba(55,128,191,0.8)\"]\n\nfig.add_trace(go.Bar(\n    x=prices_after, y=vols_after, marker_color=colors_after,\n    text=vols_after, textposition=\"outside\", showlegend=False,\n), row=1, col=2)\n\nfig.update_layout(template=\"plotly_white\", height=280,\n                  margin=dict(t=50, b=40, l=50, r=30),\n                  font=dict(family=\"Palatino, Georgia, serif\", size=11))\nfig.update_yaxes(range=[0, 2000])\nfig.show()\n\n\n                            \n                                            \n\n\nThe green bars are sampled from the empirical queue size distribution at the corresponding depth level. The best bid is now $30.17, and the book extends 3 ticks below it to maintain 4 levels.",
+    "crumbs": [
+      "Implementation",
+      "Order Book"
+    ]
+  },
+  {
+    "objectID": "orderbook.html#fill-recording",
+    "href": "orderbook.html#fill-recording",
+    "title": "Order Book",
+    "section": "Fill Recording",
+    "text": "Fill Recording\nWhen processing a trade, the book can optionally record fills — a vector of {price, size} pairs for each level consumed:\n\n\nCode\nimport plotly.graph_objects as go\n\nfig = go.Figure(go.Waterfall(\n    x=[\"$30.19&lt;br&gt;(2000 avail)\", \"$30.18&lt;br&gt;(3000 avail)\", \"$30.17&lt;br&gt;(200 avail)\", \"Total filled\"],\n    y=[2000, 3000, 200, 0],\n    measure=[\"relative\", \"relative\", \"relative\", \"total\"],\n    text=[\"2000\", \"3000\", \"200\", \"5200\"],\n    textposition=\"outside\",\n    connector=dict(line=dict(color=\"rgba(0,0,0,0.3)\", width=1)),\n    increasing=dict(marker_color=\"rgba(55,128,191,0.8)\"),\n    totals=dict(marker_color=\"rgba(44,62,80,0.9)\"),\n))\n\nfig.update_layout(\n    title=dict(text=\"Multi-level fill: Sell 5200 into bid side\", font=dict(size=14)),\n    template=\"plotly_white\", height=300,\n    margin=dict(t=50, b=40, l=50, r=30),\n    font=dict(family=\"Palatino, Georgia, serif\"),\n    yaxis_title=\"Shares filled\",\n)\nfig.show()",
+    "crumbs": [
+      "Implementation",
+      "Order Book"
+    ]
+  },
+  {
+    "objectID": "orderbook.html#c-implementation",
+    "href": "orderbook.html#c-implementation",
+    "title": "Order Book",
+    "section": "C++ Implementation",
+    "text": "C++ Implementation\nThe implementation lives in cpp/include/orderbook.h and cpp/src/orderbook.cpp.\n\nWhy std::map?\nEach side of the book is a std::map&lt;int32_t, int32_t&gt; mapping price (in ticks) to volume. A sorted map gives us:\n\nNatural ordering — best bid is always bid_.rbegin() (highest key), best ask is ask_.begin() (lowest key). No manual sorting needed.\n\\(O(\\log n)\\) insert/erase/lookup — since we maintain only N levels (default 4), this is effectively constant.\nAutomatic cleanup — erasing a key removes the level entirely; no tombstones or compaction.\n\nAn array or vector indexed by price offset would also work (and be faster for fixed-depth books), but the map handles variable-depth books and price moves cleanly without reindexing.\n\n\nKey Types\nenum class Side: int8_t { Bid = -1, Ask = 1 };\n\nenum class OrderType: uint8_t {\n    Add = 0, Cancel = 1, Trade = 2, CreateBid = 3, CreateAsk = 4\n};\n\nstruct Order {\n    OrderType type;\n    Side side;\n    int32_t price;      // in tick multiples\n    int32_t size;        // in shares (MES-scaled)\n    int64_t ts;          // timestamp (nanoseconds)\n    bool rejected = false;\n    bool partial = false;\n};\n\nstruct Fill {\n    int32_t price;\n    int32_t size;\n};\nOrder is passed by reference to process() — the book mutates rejected and partial flags in place to signal outcomes back to the caller. Fill records are optionally collected during sweeps via an output pointer.\n\n\nQueue Distributions\nWhen the clean pass needs to regenerate a depleted level, it samples from empirical queue size distributions. These are stored as cumulative probability vectors (one per side per depth level) and sampled via inverse-CDF:\nint32_t sample(Side side, int level, std::mt19937_64 &rng) const {\n    double u = uniform(0, 1);\n    auto it = std::lower_bound(cum_probs[side][level].begin(),\n                                cum_probs[side][level].end(), u);\n    return (it - cum_probs[side][level].begin()) * mes[level];\n}\nThe result is scaled by the MES at that level, so regenerated queues have realistic volumes in shares.\n\n\nInit and MES Scaling\ninit() takes raw queue sizes (in normalised units from the estimation pipeline) and scales each level by its MES. The map’s natural ordering means iterating bid_.rbegin()→rend() visits best-to-worst, matching level 0, 1, 2, … to mes[0], mes[1], mes[2], ....\n\n\nPublic API\n\n\n\n\n\n\n\n\nMethod\nReturns\nDescription\n\n\n\n\nbest_bid()\nint32_t\nHighest bid price\n\n\nbest_ask()\nint32_t\nLowest ask price\n\n\nbest_bid_vol()\nint32_t\nVolume at best bid\n\n\nbest_ask_vol()\nint32_t\nVolume at best ask\n\n\nvolume_at(side, price)\nint32_t\nVolume at any price (0 if absent)\n\n\nspread()\nint32_t\nbest_ask - best_bid\n\n\nimbalance()\ndouble\n\\((q_{-1} - q_1) / (q_{-1} + q_1)\\)\n\n\nprocess(order, fills*)\nvoid\nApply order, optionally record fills",
+    "crumbs": [
+      "Implementation",
+      "Order Book"
+    ]
+  },
+  {
+    "objectID": "simulation.html",
+    "href": "simulation.html",
+    "title": "Simulation Loop",
+    "section": "",
+    "text": "The simplest possible simulation — load parameters, init book, loop:\n#include \"orderbook.h\"\n#include \"qr_model.h\"\n\nusing namespace qr;\n\nint main() {\n    std::string params_path = \"data/PFE/qr_params\";\n\n    // Load estimated parameters\n    QueueDistributions dists(params_path + \"/invariant_distributions_qmax100.csv\");\n    QRParams params(params_path);\n    SizeDistributions size_dists(params_path + \"/size_distrib.csv\");\n\n    // Initialise order book (4 levels per side)\n    OrderBook lob(dists, 4);\n    lob.init({1516, 1517, 1518, 1519},  // bid prices\n             {4, 1, 10, 5},              // bid volumes\n             {1520, 1521, 1522, 1523},    // ask prices\n             {6, 17, 22, 23});            // ask volumes\n\n    // Create model (wraps book + params + size distributions)\n    QRModel model(&lob, params, size_dists);\n\n    // Simulate 1 hour (in nanoseconds)\n    int64_t duration = int64_t(3600) * 1'000'000'000;\n    int64_t time = 0;\n\n    while (time &lt; duration) {\n        Order order = model.sample_order(time);\n        // Always sample dt after the order — dt distribution may depend on the event\n        int64_t dt  = model.sample_dt(model.last_event());\n        time += dt;\n        order.ts = time;\n\n        lob.process(order);                            // apply to book\n    }\n}\nThat’s the entire simulation. model.sample_order() reads the current book state (imbalance, spread), samples an event and a size, and returns a concrete Order. model.sample_dt() draws an inter-arrival time. The book handles the rest.",
+    "crumbs": [
+      "Implementation",
+      "Simulation Loop"
+    ]
+  },
+  {
+    "objectID": "simulation.html#barebones-example",
+    "href": "simulation.html#barebones-example",
+    "title": "Simulation Loop",
+    "section": "",
+    "text": "The simplest possible simulation — load parameters, init book, loop:\n#include \"orderbook.h\"\n#include \"qr_model.h\"\n\nusing namespace qr;\n\nint main() {\n    std::string params_path = \"data/PFE/qr_params\";\n\n    // Load estimated parameters\n    QueueDistributions dists(params_path + \"/invariant_distributions_qmax100.csv\");\n    QRParams params(params_path);\n    SizeDistributions size_dists(params_path + \"/size_distrib.csv\");\n\n    // Initialise order book (4 levels per side)\n    OrderBook lob(dists, 4);\n    lob.init({1516, 1517, 1518, 1519},  // bid prices\n             {4, 1, 10, 5},              // bid volumes\n             {1520, 1521, 1522, 1523},    // ask prices\n             {6, 17, 22, 23});            // ask volumes\n\n    // Create model (wraps book + params + size distributions)\n    QRModel model(&lob, params, size_dists);\n\n    // Simulate 1 hour (in nanoseconds)\n    int64_t duration = int64_t(3600) * 1'000'000'000;\n    int64_t time = 0;\n\n    while (time &lt; duration) {\n        Order order = model.sample_order(time);\n        // Always sample dt after the order — dt distribution may depend on the event\n        int64_t dt  = model.sample_dt(model.last_event());\n        time += dt;\n        order.ts = time;\n\n        lob.process(order);                            // apply to book\n    }\n}\nThat’s the entire simulation. model.sample_order() reads the current book state (imbalance, spread), samples an event and a size, and returns a concrete Order. model.sample_dt() draws an inter-arrival time. The book handles the rest.",
+    "crumbs": [
+      "Implementation",
+      "Simulation Loop"
+    ]
+  },
+  {
+    "objectID": "simulation.html#what-sample_order-does",
+    "href": "simulation.html#what-sample_order-does",
+    "title": "Simulation Loop",
+    "section": "What sample_order Does",
+    "text": "What sample_order Does\nInternally, sample_order performs these steps:\n\nRead \\((\\text{Imb}, n)\\) from the book\nLook up the StateParams for that state — a list of events with probabilities\nDraw from the categorical distribution → gives an Event (type, side, queue)\nDraw a size from the empirical size distribution for that event, scaled by MES\nCompute the price from the event and current book prices:\n\n\n\n\nEvent\nPrice\n\n\n\n\nAdd at \\(q_{-1}\\)\nbest_bid\n\n\nAdd at \\(q_{-2}\\)\nbest_bid - 1\n\n\nAdd at \\(q_1\\)\nbest_ask\n\n\nAdd at \\(q_2\\)\nbest_ask + 1\n\n\nCancel\nsame as Add\n\n\nTrade at \\(q_{-1}\\)\nbest_bid (sell into bid)\n\n\nTrade at \\(q_1\\)\nbest_ask (buy into ask)\n\n\nCreateBid\nbest_bid + 1\n\n\nCreateAsk\nbest_ask - 1",
+    "crumbs": [
+      "Implementation",
+      "Simulation Loop"
+    ]
+  },
+  {
+    "objectID": "simulation.html#inter-arrival-time",
+    "href": "simulation.html#inter-arrival-time",
+    "title": "Simulation Loop",
+    "section": "Inter-Arrival Time",
+    "text": "Inter-Arrival Time\nBy default, \\(\\Delta t\\) is sampled from an exponential distribution: \\(\\Delta t \\sim \\text{Exp}(\\Lambda(\\text{Imb}, n))\\).\nYou can replace it with any distribution by implementing the DeltaT interface and passing it to the model:\nclass DeltaT {\npublic:\n    virtual ~DeltaT() = default;\n    virtual int64_t sample(int imb_bin, int spread, const Event& event,\n                           std::mt19937_64& rng) const = 0;\n};\nThe interface receives the current state and the sampled event, so your distribution can condition on anything. For example, the codebase includes a 5-component Gaussian mixture in \\(\\log_{10}\\) space:\nMixtureDeltaT delta_t(params_path + \"/delta_t_gmm.csv\");\nQRModel model(&lob, params, size_dists, delta_t);",
+    "crumbs": [
+      "Implementation",
+      "Simulation Loop"
+    ]
+  },
+  {
+    "objectID": "simulation.html#adding-bias",
+    "href": "simulation.html#adding-bias",
+    "title": "Simulation Loop",
+    "section": "Adding Bias",
+    "text": "Adding Bias\nTo inject a signal, call model.bias(b) before sample_order. This scales trade probabilities while leaving non-trade events unchanged:\nwhile (time &lt; duration) {\n    double b = impact-&gt;bias_factor();\n    model.bias(b);                                     // bias trades\n\n    Order order = model.sample_order(time);\n    int64_t dt  = model.sample_dt(model.last_event());\n    time += dt;\n    order.ts = time;\n\n    impact-&gt;step(time);                                // decay\n\n    lob.process(order);\n\n    // Update impact accumulator after trades\n    if (order.type == OrderType::Trade && !order.rejected) {\n        impact-&gt;add_trade(order.side, order.size);\n    }\n}\nAny source of bias works — market impact, alpha signal, or your own:\ndouble bias = impact-&gt;bias_factor() - alpha-&gt;scale() * alpha-&gt;value();\nmodel.bias(bias);",
+    "crumbs": [
+      "Implementation",
+      "Simulation Loop"
+    ]
+  },
+  {
+    "objectID": "simulation.html#recording-output",
+    "href": "simulation.html#recording-output",
+    "title": "Simulation Loop",
+    "section": "Recording Output",
+    "text": "Recording Output\nTo capture the simulation output, record the book state before each event and the order metadata after:\nstd::vector&lt;Fill&gt; fills;\n\nwhile (time &lt; duration) {\n    Order order = model.sample_order(time);\n    int64_t dt  = model.sample_dt(model.last_event());\n    time += dt;\n    order.ts = time;\n\n    // Snapshot book state before processing\n    double mid = (lob.best_bid() + lob.best_ask()) / 2.0;\n    double imb = lob.imbalance();\n\n    fills.clear();\n    lob.process(order, &fills);\n\n    // Now you have: mid, imb (before), order (after), fills\n}\nThe fills vector gives you per-level execution details for trades. See Order Book — Fill Recording for the format.",
+    "crumbs": [
+      "Implementation",
+      "Simulation Loop"
+    ]
+  },
+  {
+    "objectID": "model.html",
+    "href": "model.html",
+    "title": "Model and Data",
+    "section": "",
+    "text": "The queue-reactive (QR) model treats the limit order book as a continuous-time Markov jump process: the rate of each event (limit order, cancellation, market order) depends on the current state of the book.\nIn the original formulation of Huang et al. (2015), each queue is treated independently and event intensities are functions of individual queue sizes. We simplify the state conditioning: instead of the full queue vector, we project onto two quantities:\n\\[\n\\Phi(\\text{LOB}) = (\\text{Imb}, n)\n\\]\nwhere \\(\\text{Imb} = (q_{-1} - q_1)/(q_{-1} + q_1)\\) is the volume imbalance at the best level and \\(n\\) is the bid-ask spread in ticks. This captures most of the bid-ask dependency that matters while keeping estimation tractable.\n\n\nIn state \\(\\Phi(\\text{LOB})\\), the total event rate and per-event probabilities are:\n\\[\n\\Lambda = \\sum_e \\lambda^e(\\Phi), \\qquad p^e = \\frac{\\lambda^e(\\Phi)}{\\Lambda}\n\\]\nThe simulation draws two independent quantities at each step:\n\nWhich event: \\(e^* \\sim \\text{Categorical}(p^e)\\)\nWhen: \\(\\Delta t \\sim \\text{Exp}(\\Lambda)\\)\nHow large: \\(v^* \\sim p(v \\mid \\Phi, e^*)\\)\n\nThen the event is applied to the book and the state updates.\n\n\n\nWhen spread \\(= 1\\): Add and Cancel at \\(q_{\\pm 1}, q_{\\pm 2}\\); Trade at \\(q_{\\pm 1}\\).\nWhen spread \\(\\geq 2\\): only CreateBid and CreateAsk fire (one tick inside the spread), closing the gap before normal activity resumes. This makes sense for large-tick assets since participants rarely cross a spread wider than 1 tick.\n\n\n\nThe importance of modelling random order sizes in the QR framework was noted by Bodor & Carlier (2025). In our implementation, we sample event sizes from empirical distributions conditioned on \\((\\Phi, e, q_{\\pm i})\\), capped at 50 MES. This lets queue depletion arise naturally from a single large trade rather than requiring a dedicated event type.",
+    "crumbs": [
+      "Implementation",
+      "Model and Data"
+    ]
+  },
+  {
+    "objectID": "model.html#the-queue-reactive-model",
+    "href": "model.html#the-queue-reactive-model",
+    "title": "Model and Data",
+    "section": "",
+    "text": "The queue-reactive (QR) model treats the limit order book as a continuous-time Markov jump process: the rate of each event (limit order, cancellation, market order) depends on the current state of the book.\nIn the original formulation of Huang et al. (2015), each queue is treated independently and event intensities are functions of individual queue sizes. We simplify the state conditioning: instead of the full queue vector, we project onto two quantities:\n\\[\n\\Phi(\\text{LOB}) = (\\text{Imb}, n)\n\\]\nwhere \\(\\text{Imb} = (q_{-1} - q_1)/(q_{-1} + q_1)\\) is the volume imbalance at the best level and \\(n\\) is the bid-ask spread in ticks. This captures most of the bid-ask dependency that matters while keeping estimation tractable.\n\n\nIn state \\(\\Phi(\\text{LOB})\\), the total event rate and per-event probabilities are:\n\\[\n\\Lambda = \\sum_e \\lambda^e(\\Phi), \\qquad p^e = \\frac{\\lambda^e(\\Phi)}{\\Lambda}\n\\]\nThe simulation draws two independent quantities at each step:\n\nWhich event: \\(e^* \\sim \\text{Categorical}(p^e)\\)\nWhen: \\(\\Delta t \\sim \\text{Exp}(\\Lambda)\\)\nHow large: \\(v^* \\sim p(v \\mid \\Phi, e^*)\\)\n\nThen the event is applied to the book and the state updates.\n\n\n\nWhen spread \\(= 1\\): Add and Cancel at \\(q_{\\pm 1}, q_{\\pm 2}\\); Trade at \\(q_{\\pm 1}\\).\nWhen spread \\(\\geq 2\\): only CreateBid and CreateAsk fire (one tick inside the spread), closing the gap before normal activity resumes. This makes sense for large-tick assets since participants rarely cross a spread wider than 1 tick.\n\n\n\nThe importance of modelling random order sizes in the QR framework was noted by Bodor & Carlier (2025). In our implementation, we sample event sizes from empirical distributions conditioned on \\((\\Phi, e, q_{\\pm i})\\), capped at 50 MES. This lets queue depletion arise naturally from a single large trade rather than requiring a dedicated event type.",
+    "crumbs": [
+      "Implementation",
+      "Model and Data"
+    ]
+  },
+  {
+    "objectID": "model.html#data",
+    "href": "model.html#data",
+    "title": "Model and Data",
+    "section": "Data",
+    "text": "Data\n\nSource\nAll estimation uses Databento MBP-10 data covering December 2023 to December 2025. The raw MBP-10 feed is passed through a preprocessing step (see src/qr/preprocessing.py) that aggregates trade and create messages, computes queue sizes, and normalises volumes by MES. Four S&P 500 constituents trading around the $30 mark: PFE, INTC, VZ, T.\nTo avoid open/close effects, we discard the first and last 30 minutes of each trading day, keeping the 10:00–15:30 ET window.\n\n\nPreprocessing\nRaw MBP-10 data is preprocessed into the QR format — one row per event with queue sizes, prices, imbalance, spread, and event classification:\nfrom pathlib import Path\nfrom qr.preprocessing import mbp10_to_qr\n\n# One day of raw MBP-10 data\nfile = Path(\"data/PFE/mbp-10-raw/2024-06-03.parquet\")\ndf = mbp10_to_qr(file).collect()\nSee the docstring of mbp10_to_qr in src/qr/preprocessing.py for the full output schema.\n\n\n\n\n\n\nNote\n\n\n\nFor data loading we use lobib, an internal tool. You can replace this with whatever data loader fits your setup — mbp10_to_qr expects a standard Databento MBP-10 parquet file as input.\n\n\n\n\nEstimation procedure\nAll parameters are estimated by maximum likelihood. For each state \\(\\Phi\\):\n\nEvent probabilities: empirical frequencies \\[\n\\hat{p}^e(\\Phi) = \\frac{\\#\\{k : e_k = e, \\Phi_k = \\Phi\\}}{\\#\\{k : \\Phi_k = \\Phi\\}}\n\\]\nTotal intensity: inverse of mean waiting time \\[\n\\hat{\\Lambda}(\\Phi) = \\left(\\frac{1}{N_\\Phi}\\sum_{k \\in \\mathcal{K}(\\Phi)} \\Delta t_k\\right)^{-1}\n\\]\nSize distributions: empirical CDF per \\((\\Phi, e, q)\\) cell\n\nAfter estimation, all statistics are symmetrised between bid and ask: the probability of a bid event at imbalance \\(+x\\) is averaged with the corresponding ask event at \\(-x\\). This eliminates systematic drift and halves the number of parameters.\n\n\nOutput files\nThe estimation pipeline (run with uv) produces the following files in data/{ticker}/qr_params/:\n\nevent_probabilities.csv\nEvent probabilities \\(p^e(\\text{Imb}, n)\\) for all events.\n\n\n\n\n\n\n\n\nColumn\nType\nDescription\n\n\n\n\nimbalance\nfloat\nImbalance bin (0.0 to 1.0, positive half only — mirrored at load time)\n\n\nspread\nint\n1 or 2\n\n\nevent\nstr\nAdd, Cancel, Trade, Create_Bid, Create_Ask\n\n\nqueue\nint\nSigned queue number: -2, -1, 1, 2 (0 for creates)\n\n\nside\nint\n-1 (bid) or 1 (ask)\n\n\nprobability\nfloat\nEstimated \\(\\hat{p}^e\\)\n\n\n\n\n\ndelta_t_exponential.csv\nMean inter-arrival time per state, used for exponential \\(\\Delta t\\) sampling.\n\n\n\nColumn\nType\nDescription\n\n\n\n\nimbalance\nfloat\nImbalance bin\n\n\nspread\nint\n1 or 2\n\n\naverage_dt\nfloat\nMean \\(\\Delta t\\) in nanoseconds\n\n\n\n\n\ndelta_t_gmm.csv\n5-component Gaussian mixture parameters for \\(\\log_{10}(\\Delta t)\\), per event type.\n\n\n\nColumn\nType\nDescription\n\n\n\n\nimbalance\nfloat\nImbalance bin\n\n\nspread\nint\n1 or 2\n\n\nevent\nstr\nEvent type\n\n\nqueue\nint\nSigned queue number\n\n\nside\nint\n-1 or 1\n\n\nw_1..w_5\nfloat\nComponent weights\n\n\nmu_1..mu_5\nfloat\nComponent means (in \\(\\log_{10}\\) ns)\n\n\nsig_1..sig_5\nfloat\nComponent standard deviations\n\n\n\n\n\nsize_distrib.csv\nEmpirical size probability mass functions per \\((\\text{Imb}, e, q)\\) cell.\n\n\n\nColumn\nType\nDescription\n\n\n\n\nimbalance\nfloat\nImbalance bin\n\n\nspread\nfloat\n1 or 2\n\n\nevent\nstr\nEvent type\n\n\nqueue\nfloat\nSigned queue number\n\n\nside\nfloat\n-1 or 1\n\n\n1..50\nfloat\nProbability of size \\(v\\) (in MES units)\n\n\n\n\n\ninvariant_distributions_qmax100.csv\nStationary queue size distributions used by the order book to regenerate levels during the clean pass.\n\n\n\nColumn\nType\nDescription\n\n\n\n\nqueue_level\nint\nLevel index (1–4)\n\n\n0..100\nfloat\nProbability of queue size \\(q\\) (in MES units)\n\n\n\n\n\nparams.json\n{\n  \"median_event_sizes\": {\"1\": 200, \"2\": 200, \"3\": 150, \"4\": 100},\n  \"total_best_quantiles\": [17, 25, 35, 51]\n}\nMES per queue level (in shares) and the quantile boundaries for total best volume binning.\nPer-day intermediate results are stored as parquet files in data/{ticker}/daily_estimates/, one per trading day.",
+    "crumbs": [
+      "Implementation",
+      "Model and Data"
+    ]
+  },
+  {
+    "objectID": "model.html#biasing-probabilities",
+    "href": "model.html#biasing-probabilities",
+    "title": "Model and Data",
+    "section": "Biasing Probabilities",
+    "text": "Biasing Probabilities\nThe QR model samples the next event from conditional probabilities \\(p^e(\\Phi)\\). We can bias these probabilities to inject external signals into the book dynamics. The mechanism is general: multiply selected event probabilities by a factor and renormalise. The main application is market impact, but the same interface supports any signal (alpha, strategy feedback, etc.).\n\nHow it works\nEach StateParams holds two probability vectors: base_probs (immutable, estimated from data) and probs (working copy that gets biased before sampling). Given a bias factor \\(b\\):\n\nIf \\(b &gt; 0\\): bid (sell) trade probabilities are multiplied by \\(e^b\\)\nIf \\(b &lt; 0\\): ask (buy) trade probabilities are multiplied by \\(e^{-b}\\)\nAll non-trade events keep their base probabilities\n\nThe cumulative distribution is then recomputed for sampling. This is the actual implementation:\nvoid bias(double b) {\n    total = 0.0;\n    for (size_t i = 0; i &lt; events.size(); i++) {\n        if (events[i].type == OrderType::Trade) {\n            double factor = 1;\n            if ((events[i].side == Side::Bid) && (b &gt; 0)) {\n                factor = std::exp(b);\n            } else if ((events[i].side == Side::Ask) && (b &lt; 0)) {\n                factor = std::exp(-b);\n            }\n            probs[i] = base_probs[i] * factor;\n        } else\n            probs[i] = base_probs[i];\n        total += probs[i];\n    }\n    cum_probs[0] = probs[0];\n    for (size_t i = 1; i &lt; probs.size(); i++)\n        cum_probs[i] = cum_probs[i - 1] + probs[i];\n}\nThe biasing is single-sided: only the side opposing the signal gets boosted. When b &gt; 0 (e.g. recent net buying), only sell trades become more likely; when b &lt; 0, only buy trades. Non-trade events are unaffected, so the overall event mix stays close to the baseline.\nSampling then draws from the biased distribution:\nconst Event &sample_event(std::mt19937_64 &rng) const {\n    double u = std::uniform_real_distribution&lt;&gt;(0, total)(rng);\n    auto it = std::lower_bound(cum_probs.begin(), cum_probs.end(), u);\n    return events[it - cum_probs.begin()];\n}\nNote that sample_event draws uniformly in \\([0, \\text{total})\\) rather than \\([0, 1)\\) — the probabilities are not renormalised to sum to 1, but the sampling range adjusts to total, which is equivalent and avoids a division pass.",
+    "crumbs": [
+      "Implementation",
+      "Model and Data"
+    ]
+  },
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "Queue-Reactive LOB Simulator",
+    "section": "",
+    "text": "Limit order book simulation framework based on the Queue Reactive (QR) model for large-tick assets.",
+    "crumbs": [
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "index.html#requirements",
+    "href": "index.html#requirements",
+    "title": "Queue-Reactive LOB Simulator",
+    "section": "Requirements",
+    "text": "Requirements\n\nC++20 (gcc 13.3.0)\nCMake 3.15+\nvcpkg (bundled as submodule)\nPython 3.11+ with uv for the estimation/analysis pipeline",
+    "crumbs": [
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "index.html#build",
+    "href": "index.html#build",
+    "title": "Queue-Reactive LOB Simulator",
+    "section": "Build",
+    "text": "Build\n# Clone with submodules\ngit clone --recursive https://github.com/youruser/Alpha-Queue-Reactive.git\n\n# Bootstrap vcpkg (first time only)\n./vcpkg/bootstrap-vcpkg.sh\n\n# Build\ncmake -B build -DCMAKE_BUILD_TYPE=Release \\\n  -DCMAKE_TOOLCHAIN_FILE=./vcpkg/scripts/buildsystems/vcpkg.cmake\ncmake --build build -j$(nproc)",
+    "crumbs": [
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "index.html#project-structure",
+    "href": "index.html#project-structure",
+    "title": "Queue-Reactive LOB Simulator",
+    "section": "Project Structure",
+    "text": "Project Structure\nqr/\n├── cpp/\n│   ├── include/        # Headers (orderbook, qr_model, simulation)\n│   ├── src/            # Implementation\n│   └── bin/            # Executables (sample, sample_strategy, run_metaorder, ...)\n├── src/qr/             # Python estimation & analysis package\n├── scripts/            # Plotting scripts\n├── notebooks/          # Jupyter notebooks (paper figures, calibration)\n├── configs/            # JSON simulation configs\n├── tests/              # C++ unit tests (GoogleTest)\n└── data/               # Input data & results",
+    "crumbs": [
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "index.html#further-details",
+    "href": "index.html#further-details",
+    "title": "Queue-Reactive LOB Simulator",
+    "section": "Further Details",
+    "text": "Further Details\n\n\n\nPage\nDescription\n\n\n\n\nModel and Data\nThe QR framework, data sources, estimation pipeline, and market impact mechanism\n\n\nOrder Book\nBook representation, event types, order processing transitions, and the C++ implementation\n\n\nSimulation Loop\nHow to configure, assemble, and run a QR simulation",
+    "crumbs": [
+      "Overview"
+    ]
+  }
+]
