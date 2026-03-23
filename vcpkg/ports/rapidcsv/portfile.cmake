@@ -1,0 +1,16 @@
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO d99kris/rapidcsv
+    REF "v${VERSION}"
+    SHA512 bff69f7e15c96761a2553afa5bcab3375540f78aed7687a0357312769cd63f8c47187768a87f8a910c867f4fa3f99d19fcc48a2631b0b62a543b4627e1540458
+    HEAD_REF master
+)
+
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+)
+vcpkg_cmake_install()
+
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug")
+
+file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

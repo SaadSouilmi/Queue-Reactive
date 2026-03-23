@@ -1,0 +1,51 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# C++ build artifacts
+build/
+cmake-build-debug/
+cmake-build-release/
+CMakeFiles/
+_deps/
+CMakeCache.txt
+Makefile
+cmake_install.cmake
+
+# IDE
+.idea/
+
+# Data files (too large for git)
+data/
+*.parquet
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+.virtual_documents/
+
+# Misc
+*.o
+*.a
+*.so
+*.dylib
+.virtual_documents/
+
+# vcpkg (heavy build artifacts)
+vcpkg/buildtrees/
+vcpkg/downloads/
+vcpkg/installed/
+vcpkg/packages/
+
+report/
+markdown/
+configs/
+paper/
+pat_comments.md
+docs/main.tex

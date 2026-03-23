@@ -1,0 +1,13 @@
+# header-only library
+
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO mattreecebentley/plf_colony
+    REF d0f4a9306237cc0b030a7ae981b52b6fa83dc788  # v7.6.01
+    SHA512 9553d6db71b67d5e1a13a7b14c61b69e1f76c313eda3061f92679f787f3fd0158468304c34633a84976213d0674ce4d93449f6f091a4047b652e27ae52b1e608
+    HEAD_REF master
+)
+
+file(COPY "${SOURCE_PATH}/plf_colony.h" DESTINATION "${CURRENT_PACKAGES_DIR}/include")
+
+file(INSTALL "${SOURCE_PATH}/LICENSE.md" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)
