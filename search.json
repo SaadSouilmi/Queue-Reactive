@@ -222,7 +222,7 @@
     "href": "index.html#quick-start",
     "title": "Queue-Reactive LOB Simulator",
     "section": "Quick Start",
-    "text": "Quick Start\ngit clone --recurse-submodules https://github.com/SaadSouilmi/Queue-Reactive.git\ncd Queue-Reactive\ndocker build -t qr .\ndocker run --rm -it qr bash",
+    "text": "Quick Start\ngit clone --recurse-submodules https://github.com/SaadSouilmi/Queue-Reactive.git\ncd Queue-Reactive\ngit submodule update --init --recursive\ndocker build -t qr .\ndocker run --rm -it qr bash",
     "crumbs": [
       "Overview"
     ]
