@@ -222,7 +222,7 @@
     "href": "index.html#quick-start",
     "title": "Queue-Reactive LOB Simulator",
     "section": "Quick Start",
-    "text": "Quick Start\n# Clone with submodules\ngit clone --recursive https://github.com/youruser/Alpha-Queue-Reactive.git\n\n# Bootstrap vcpkg (first time only)\n./vcpkg/bootstrap-vcpkg.sh\n\n# Build\ncmake -B build -DCMAKE_BUILD_TYPE=Release \\\n  -DCMAKE_TOOLCHAIN_FILE=./vcpkg/scripts/buildsystems/vcpkg.cmake\ncmake --build build -j$(nproc)",
+    "text": "Quick Start\ngit clone --recurse-submodules https://github.com/SaadSouilmi/Queue-Reactive.git\ncd Queue-Reactive\ndocker build -t qr .\ndocker run --rm -it qr bash",
     "crumbs": [
       "Overview"
     ]
