@@ -1,5 +1,7 @@
 # Limit Order Book Simulation
 
+Implementation of [Bridging the Reality Gap in Limit Order Book Simulation](https://arxiv.org/abs/2603.24137)
+
 > Microstructure and data driven Limit order book simulation based on the [queue reactive model](https://arxiv.org/pdf/1312.0563).
 
 A C++ simulation framework implementing the **Queue-Reactive (QR) model** for large-tick assets. The QR model treats the limit order book as a continuous-time Markov jump process: every event (limit order, cancellation, trade) is sampled from empirical distributions conditioned on the current book state — volume imbalance and spread.
@@ -56,3 +58,17 @@ Further details available [here](https://saadsouilmi.github.io/Queue-Reactive/) 
 - **[Model and Data](https://saadsouilmi.github.io/Queue-Reactive/model.html)** — the QR framework, estimation pipeline, and probability biasing
 - **[Order Book](https://saadsouilmi.github.io/Queue-Reactive/orderbook.html)** — book representation, event types, and C++ implementation
 - **[Simulation Loop](https://saadsouilmi.github.io/Queue-Reactive/simulation.html)** — configuring and running simulations
+
+### Citation
+
+```bibtex
+@misc{noble2026bridgingrealitygaplimit,
+      title={Bridging the Reality Gap in Limit Order Book Simulation},
+      author={Patrick Noble and Mathieu Rosenbaum and Saad Souilmi},
+      year={2026},
+      eprint={2603.24137},
+      archivePrefix={arXiv},
+      primaryClass={q-fin.TR},
+      url={https://arxiv.org/abs/2603.24137},
+}
+```
