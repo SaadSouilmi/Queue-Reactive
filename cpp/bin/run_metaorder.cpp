@@ -324,7 +324,7 @@ Example config.json:
         return 1;
     }
 
-    std::string base_path = "/home/labcmap/saad.souilmi/dev_cpp/qr/data";
+    std::string base_path = "../data";
     std::string ticker = get_string(doc, "ticker", "PFE");
     std::string data_path = base_path + "/" + ticker;
     std::string params_path = data_path + "/qr_params";
