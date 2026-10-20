@@ -110,17 +110,18 @@ def preprocess_sim(df: pl.DataFrame, mes: dict[int, int] | None = None) -> pl.Da
     return df.drop_nulls()
 
 
-def load_data(ticker: str) -> tuple[pl.DataFrame, pl.DataFrame]:
+def load_data(ticker: str, base_path: str | Path | None = None) -> tuple[pl.DataFrame, pl.DataFrame]:
     from lobib import DataLoader
     loader = DataLoader()
 
-    files = list((Path.home() / f"dev_cpp/qr/data/{ticker}/daily_estimates").glob("*.parquet"))
+    if base_path is None:
+        base_path = Path(__file__).resolve().parents[2] / "data"
+    daily_dir = Path(base_path) / ticker / "daily_estimates"
+    files = list(daily_dir.glob("*.parquet"))
     df = pl.scan_parquet(files)
     df = df.collect()
     dates = df["date"].unique().to_list()
-    median_event_sizes, total_best_quantiles = est.load_params(
-        Path.home() / f"dev_cpp/qr/data/{ticker}/daily_estimates/params.json"
-    )
+    median_event_sizes, total_best_quantiles = est.load_params(daily_dir / "params.json")
     df_emp = pl.concat(
         [
             est.preprocess(

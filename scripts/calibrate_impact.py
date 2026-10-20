@@ -31,19 +31,22 @@ def target_curve(t_norm: np.ndarray) -> np.ndarray:
 
 
 def run_metaorder(binary: str, config: dict, tmp_dir: Path) -> str | None:
-    """Run the binary, return the output CSV path or None on failure."""
+    """Run the binary from its own directory (it reads ../data, like the other
+    binaries) and return the output CSV path, or None on failure."""
+    binary_path = Path(binary).resolve()
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".json", dir=tmp_dir, delete=False
     ) as f:
         json.dump(config, f)
-        config_path = f.name
+        config_path = str(Path(f.name).resolve())
 
     try:
         result = subprocess.run(
-            [binary, config_path],
+            [str(binary_path), config_path],
             capture_output=True,
             text=True,
             timeout=300,
+            cwd=binary_path.parent,
         )
         if result.returncode != 0:
             print(f"    Error: {result.stderr[:200]}")
@@ -51,7 +54,8 @@ def run_metaorder(binary: str, config: dict, tmp_dir: Path) -> str | None:
 
         for line in result.stdout.split("\n"):
             if "Output:" in line:
-                return line.split("Output:")[-1].strip()
+                out = line.split("Output:")[-1].strip()
+                return str((binary_path.parent / out).resolve())
     except subprocess.TimeoutExpired:
         print("    Timeout!")
         return None
